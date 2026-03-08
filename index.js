@@ -73,8 +73,9 @@ const getUptime = () => {
 
 async function massPurge(channel, userId) {
     try {
-        const fetched = await channel.messages.fetch({ limit: CONFIG.PUNISHMENT.PURGE_LIMIT });
-        const userMessages = fetched.filter(m => m.author.id === userId || (m.webhookId && m.webhookId === userId));
+        const fetched = await channel.messages.fetch({ limit: 100 });
+        const userMessages = fetched.filter(m => m.author.id === userId || m.webhookId === userId);
+        
         if (userMessages.size > 0) {
             const deleted = await channel.bulkDelete(userMessages, true);
             SYSTEM_STATE.stats.cleanedCount += deleted.size;
