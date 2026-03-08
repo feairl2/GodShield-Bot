@@ -41,7 +41,6 @@ const SYSTEM_STATE = {
     msgLogs: new Collection(),
     contentFingerprints: new Collection(),
     cooldowns: new Set(),
-    lockdownActive: false,
     stats: {
         punishedCount: 0,
         cleanedCount: 0,
@@ -217,18 +216,10 @@ client.on(Events.MessageCreate, async (message) => {
                 );
             return channel.send({ embeds: [statsEmbed] });
         }
-        if (cmd === 'lockdown' && member.permissions.has(PermissionFlagsBits.ManageGuild)) {
-            SYSTEM_STATE.lockdownActive = !SYSTEM_STATE.lockdownActive;
-            return channel.send(`**伺服器戒嚴模式已${SYSTEM_STATE.lockdownActive ? '開啟' : '關閉'}**。`);
-        }
     }
 });
 
 client.on(Events.GuildMemberAdd, async (member) => {
-    if (SYSTEM_STATE.lockdownActive) {
-        await member.kick("戒嚴模式").catch(() => {});
-        return;
-    }
     const accountAge = (Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60);
     if (accountAge < CONFIG.PUNISHMENT.MIN_AGE_HOURS) {
         const channel = member.guild.systemChannel || member.guild.channels.cache.find(c => c.type === ChannelType.GuildText);
