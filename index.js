@@ -24,8 +24,8 @@ const client = new Client({
 const CONFIG = {
     // 頻率限制
     SPAM: {
-        MAX_MESSAGES: 3,        // 5秒內最多5則
-        WINDOW: 5000,           // 5秒區間
+        MAX_MESSAGES: 4,        // 5秒內最多5則
+        WINDOW: 3000,           // 5秒區間
         DUPLICATE_LIMIT: 2,     // 連續3則相同內容即判定為機器人
         EMOJI_LIMIT: 8,
     },
@@ -146,7 +146,14 @@ client.on(Events.MessageCreate, async (message) => {
     if (!message.guild || message.author.bot) return;
 
     const { author, content, channel, member } = message;
+    const normalized = content.toLowerCase().replace(/[^a-z0-9]/g, '');
     const now = Date.now();
+
+    const linkRegex = /(https?:\/\/|discord\.gg|t\.me|bit\.ly)/i;
+
+if (linkRegex.test(content)) {
+    return executeJustice(message, "可疑廣告連結", 'BAN');
+}
 
     if (message.mentions.everyone) {
         return executeJustice(message, "試圖非法廣播 (@everyone)", 'BAN');
