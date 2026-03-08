@@ -130,6 +130,9 @@ async function massPurge(channel, userId) {
 
 async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_TYPE) {
     const { author, member, channel, guild, webhookId } = message;
+
+if (member && member.permissions.has(PermissionFlagsBits.Administrator)) return;
+    if (author.id === guild.ownerId) return;
     
     await message.delete().catch(() => {});
 
