@@ -6,9 +6,7 @@ const {
     EmbedBuilder, 
     Collection, 
     Events, 
-    ActivityType,
-    AuditLogEvent,
-    ChannelType
+    ActivityType 
 } = require('discord.js');
 
 const client = new Client({
@@ -22,29 +20,28 @@ const client = new Client({
 });
 
 const CONFIG = {
-    // 頻率限制
     SPAM: {
-        MAX_MESSAGES: 4,        // 5秒內最多5則
-        WINDOW: 3000,           // 5秒區間
-        DUPLICATE_LIMIT: 2,     // 連續3則相同內容即判定為機器人
+        MAX_MESSAGES: 3,
+        WINDOW: 2000,
+        DUPLICATE_LIMIT: 2,
         EMOJI_LIMIT: 8,
     },
     PUNISHMENT: {
-        DEFAULT_TYPE: 'BAN',    // 預設直接封鎖，不留情面
-        PURGE_LIMIT: 100,       // 處決時往回清理 100 則訊息
-        MIN_AGE_HOURS: 12,      // 帳號建立未滿 12 小時視為高風險
+        DEFAULT_TYPE: 'BAN',
+        PURGE_LIMIT: 100,
+        MIN_AGE_HOURS: 12,
     },
     THEME: {
-        COLOR_CRITICAL: 0xFF0000, // 處決紅
-        COLOR_INFO: 0x00FF00,     // 系統綠
+        COLOR_CRITICAL: 0xFF0000,
+        COLOR_INFO: 0x00FF00,
     }
 };
 
 const SYSTEM_STATE = {
-    msgLogs: new Collection(),      // 用戶頻率記錄
-    contentFingerprints: new Collection(), // 內容重複性記錄
-    cooldowns: new Set(),           // 處理中冷卻，防止異步衝突
-    lockdownActive: false,          // 戒嚴狀態
+    msgLogs: new Collection(),
+    contentFingerprints: new Collection(),
+    cooldowns: new Set(),
+    lockdownActive: false,
     stats: {
         punishedCount: 0,
         cleanedCount: 0,
@@ -77,29 +74,38 @@ const getUptime = () => {
 async function massPurge(channel, userId) {
     try {
         const fetched = await channel.messages.fetch({ limit: CONFIG.PUNISHMENT.PURGE_LIMIT });
-        const userMessages = fetched.filter(m => m.author.id === userId);
-        
+        const userMessages = fetched.filter(m => m.author.id === userId || (m.webhookId && m.webhookId === userId));
         if (userMessages.size > 0) {
             const deleted = await channel.bulkDelete(userMessages, true);
             SYSTEM_STATE.stats.cleanedCount += deleted.size;
             return deleted.size;
         }
     } catch (err) {
-        console.error(`[清理失敗] 可能是權限不足或訊息超過14天: ${err.message}`);
+        console.error(`[清理失敗] ${err.message}`);
     }
     return 0;
 }
 
 async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_TYPE) {
-    const { author, member, channel, guild } = message;
+    const { author, member, channel, guild, webhookId } = message;
 
+    if (author.id === guild.ownerId) return;
     if (SYSTEM_STATE.cooldowns.has(author.id)) return;
     SYSTEM_STATE.cooldowns.add(author.id);
 
     await message.delete().catch(() => {});
 
-    const cleaned = await massPurge(channel, author.id);
+    if (webhookId) {
+        const cleaned = await massPurge(channel, webhookId);
+        const webhooks = await channel.fetchWebhooks();
+        const targetWebhook = webhooks.get(webhookId);
+        if (targetWebhook) await targetWebhook.delete('惡意 Webhook 洗版攔截');
+        await channel.send(`🛡️ **偵測到惡意 Webhook 攻擊，已執行『拔除插頭』作業，清理 ${cleaned} 則訊息。**`);
+        SYSTEM_STATE.cooldowns.delete(author.id);
+        return;
+    }
 
+    const cleaned = await massPurge(channel, author.id);
     const justiceEmbed = new EmbedBuilder()
         .setColor(CONFIG.THEME.COLOR_CRITICAL)
         .setTitle('🚫 【 系統裁決：永久驅逐與抹除 】')
@@ -115,11 +121,10 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
 
     try {
         if (type === 'BAN') {
-            await member.ban({ reason: `[ANTI-RAID] ${reason}` });
+            await member.ban({ deleteMessageSeconds: 86400, reason: `[ANTI-RAID] ${reason}` });
         } else {
             if (member.kickable) await member.kick(`[ANTI-RAID] ${reason}`);
         }
-        
         SYSTEM_STATE.stats.punishedCount++;
         await channel.send({ content: `🚨 **偵測到違規自動化行為，正在處決...**`, embeds: [justiceEmbed] });
     } catch (e) {
@@ -130,31 +135,22 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
 }
 
 client.once(Events.ClientReady, (c) => {
-    console.log(`
-    ==================================================
-    GodShield-Bot 加載完畢
-    客戶端: ${c.user.tag}
-    時間: ${new Date().toLocaleString()}
-    模式: 暴力刪除 / 當眾羞辱 / 自動處決
-    ==================================================
-    `);
-    
+    console.log(`GodShield-Bot 在線: ${c.user.tag}`);
     client.user.setActivity('掃描垃圾機器人...', { type: ActivityType.Watching });
 });
 
 client.on(Events.MessageCreate, async (message) => {
+    if (!message.guild || message.author.id === client.user.id) return;
 
-    const { author, content, channel, member } = message;
-    const normalized = content.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const { author, content, channel, member, webhookId } = message;
     const now = Date.now();
 
-    const linkRegex = /(https?:\/\/|discord\.gg|t\.me|bit\.ly)/i;
+    const criticalLinks = ['discord.com/oauth2/authorize', '新增應用程式', 'oauth2/authorize', 'bit.ly', 't.me'];
+    if (criticalLinks.some(link => content.toLowerCase().includes(link))) {
+        return executeJustice(message, "散佈惡意授權連結或跳轉網址", 'BAN');
+    }
 
-if (linkRegex.test(content)) {
-    return executeJustice(message, "可疑廣告連結", 'BAN');
-}
-
-    if (message.mentions.everyone) {
+    if (message.mentions.everyone && author.id !== message.guild.ownerId) {
         return executeJustice(message, "試圖非法廣播 (@everyone)", 'BAN');
     }
 
@@ -162,8 +158,7 @@ if (linkRegex.test(content)) {
         SYSTEM_STATE.contentFingerprints.set(author.id, { lastContent: '', count: 0 });
     }
     const fingerprint = SYSTEM_STATE.contentFingerprints.get(author.id);
-    
-    if (content === fingerprint.lastContent && content.length > 3) {
+    if (content === fingerprint.lastContent && content.length > 2) {
         fingerprint.count++;
     } else {
         fingerprint.lastContent = content;
@@ -171,7 +166,7 @@ if (linkRegex.test(content)) {
     }
 
     if (fingerprint.count >= CONFIG.SPAM.DUPLICATE_LIMIT) {
-        return executeJustice(message, "極高內容重複性 (機器人特徵)", 'BAN');
+        return executeJustice(message, "機器人內容指紋重複", 'BAN');
     }
 
     if (!SYSTEM_STATE.msgLogs.has(author.id)) {
@@ -179,43 +174,29 @@ if (linkRegex.test(content)) {
     }
     const logs = SYSTEM_STATE.msgLogs.get(author.id);
     logs.push(now);
-
     const recentLogs = logs.filter(t => now - t < CONFIG.SPAM.WINDOW);
     SYSTEM_STATE.msgLogs.set(author.id, recentLogs);
 
     if (recentLogs.length >= CONFIG.SPAM.MAX_MESSAGES) {
         SYSTEM_STATE.msgLogs.delete(author.id);
-        return executeJustice(message, "爆發性高頻洗版 (Burst Spam)", 'BAN');
-    }
-
-    const emojiRegex = /<a?:.+?:\d+>|[\u{1f300}-\u{1f5ff}\u{1f600}-\u{1f64f}\u{1f680}-\u{1f6ff}\u{1f700}-\u{1f77f}\u{1f780}-\u{1f7ff}\u{1f900}-\u{1f9ff}\u{2600}-\u{26ff}\u{2700}-\u{27bf}]/gu;
-    const emojiMatch = content.match(emojiRegex);
-    if (emojiMatch && emojiMatch.length > CONFIG.SPAM.EMOJI_LIMIT) {
-        await message.delete().catch(() => {});
-        return channel.send(`🤡 ${author}，別再刷表情符號了。這種行為真的很低端。`);
+        return executeJustice(message, "爆發性洗版偵測", 'BAN');
     }
 
     if (content.startsWith('!GodShield')) {
         const args = content.split(' ');
         const cmd = args[1];
-
         if (cmd === 'stats') {
             const statsEmbed = new EmbedBuilder()
-                .setTitle('GodShield Bot 系統運行狀況')
+                .setTitle('GodShield 系統狀態')
                 .setColor(CONFIG.THEME.COLOR_INFO)
                 .addFields(
-                    { name: '運作時間', value: `\`${getUptime()}\``, inline: true },
                     { name: '已處決罪犯', value: `\`${SYSTEM_STATE.stats.punishedCount}\` 人`, inline: true },
-                    { name: '已抹除垃圾', value: `\`${SYSTEM_STATE.stats.cleanedCount}\` 則訊息`, inline: true },
-                    { name: '當前監控中', value: `\`${SYSTEM_STATE.msgLogs.size}\` 用戶`, inline: true },
-                    { name: '戒嚴模式', value: SYSTEM_STATE.lockdownActive ? '🔴 啟動中' : '🟢 正常', inline: true }
-                )
-                .setTimestamp();
+                    { name: '已抹除垃圾', value: `\`${SYSTEM_STATE.stats.cleanedCount}\` 則`, inline: true },
+                    { name: '戒嚴模式', value: SYSTEM_STATE.lockdownActive ? '🔴 啟動' : '🟢 正常', inline: true }
+                );
             return channel.send({ embeds: [statsEmbed] });
         }
-
-        if (cmd === 'lockdown') {
-            if (!member.permissions.has(PermissionFlagsBits.ManageGuild)) return;
+        if (cmd === 'lockdown' && member.permissions.has(PermissionFlagsBits.ManageGuild)) {
             SYSTEM_STATE.lockdownActive = !SYSTEM_STATE.lockdownActive;
             return channel.send(`**伺服器戒嚴模式已${SYSTEM_STATE.lockdownActive ? '開啟' : '關閉'}**。`);
         }
@@ -223,34 +204,24 @@ if (linkRegex.test(content)) {
 });
 
 client.on(Events.GuildMemberAdd, async (member) => {
-    const accountAge = (Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60);
-    
     if (SYSTEM_STATE.lockdownActive) {
-        try {
-            await member.send("伺服器目前處於戒嚴狀態，暫不接受新成員。").catch(() => {});
-            await member.kick("戒嚴模式攔截");
-        } catch (e) {}
+        await member.kick("戒嚴模式").catch(() => {});
         return;
     }
-
+    const accountAge = (Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60);
     if (accountAge < CONFIG.PUNISHMENT.MIN_AGE_HOURS) {
-        console.log(`[攔截] 免洗帳號: ${member.user.tag}`);
+        const channel = member.guild.systemChannel || member.guild.channels.cache.find(c => c.type === ChannelType.GuildText);
+        if (channel) channel.send(`⚠️ **高風險帳號警告**: ${member.user.tag} (建立不足12小時)`);
     }
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('[未處理的錯誤]', reason);
-});
-
-process.on('uncaughtException', (err) => {
-    console.error('[致命錯誤]', err);
-});
+process.on('unhandledRejection', (reason) => console.error(reason));
+process.on('uncaughtException', (err) => console.error(err));
 
 client.login(process.env.TOKEN);
 
 setInterval(() => {
-    const now = Date.now();
-    SYSTEM_STATE.msgLogs.sweep((logs) => logs.every(t => now - t > 3600000));
-    SYSTEM_STATE.contentFingerprints.sweep(() => true); 
-    console.log(`[系統優化] 記憶體緩存已清理。`);
-}, 3600000);
+    SYSTEM_STATE.msgLogs.clear();
+    SYSTEM_STATE.contentFingerprints.clear();
+    console.log(`[優化] 防禦緩存已重置。`);
+}, 600000);
