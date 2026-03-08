@@ -104,15 +104,44 @@ async function massPurge(channel, userId) {
 
 async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_TYPE) {
     const { author, member, channel, guild, webhookId } = message;
-
+    
     await message.delete().catch(() => {});
 
     if (author.id === guild.ownerId) return;
-
     if (SYSTEM_STATE.cooldowns.has(author.id)) return;
+    
     SYSTEM_STATE.cooldowns.add(author.id);
+    setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 5000); 
 
     const cleaned = await massPurge(channel, author.id);
+
+    if (!SYSTEM_STATE.warnedUsers) SYSTEM_STATE.warnedUsers = new Set();
+
+    if (webhookId) {
+        const webhooks = await channel.fetchWebhooks();
+        const targetWebhook = webhooks.get(webhookId);
+        if (targetWebhook) await targetWebhook.delete('惡意 Webhook 攔截');
+        await channel.send(`🛡️ **GodShield 斬首行動**：惡意 Webhook 已抹除。`);
+    } 
+    else if (SYSTEM_STATE.warnedUsers.has(author.id)) {
+        try {
+            await member.ban({ deleteMessageSeconds: 86400, reason: `[階梯懲罰] 禁言後再犯：${reason}` });
+            SYSTEM_STATE.stats.punishedCount++;
+            SYSTEM_STATE.warnedUsers.delete(author.id);
+            await channel.send(`*"${getRandomRoast()}"* \n**(警告無效，執行終極裁決：永久封鎖)**`).catch(() => {});
+        } catch (e) {
+            await channel.send(`處決失敗：權限不足，無法封鎖 ${author.tag}。`);
+        }
+    } 
+    else {
+        try {
+            await member.timeout(60000, `[階梯懲罰] 首次違規預防性禁言：${reason}`);
+            SYSTEM_STATE.warnedUsers.add(author.id);
+            await channel.send(`⚠️ **${author.tag} 警告**：偵測到可疑行為，已暫時禁言 60 秒。再犯將直接封鎖。`).catch(() => {});
+        } catch (e) {
+            await channel.send(`警告：無法禁言 ${author.tag}，請管理員介入。`);
+        }
+    }
 
     const modLogChannel = guild.channels.cache.find(ch => ch.name === '⛔│modlog');
 
