@@ -263,9 +263,11 @@ client.on(Events.MessageCreate, async (message) => {
         return executeJustice(message, `異常超長訊息 (超過 ${CONFIG.SPAM.MAX_CHARS} 字)`, 'BAN');
     }
 
-    const criticalLinks = ['discord.com/oauth2/authorize', '新增應用程式', 'oauth2/authorize', 'bit.ly', 't.me'];
-    if (criticalLinks.some(link => content.toLowerCase().includes(link))) {
-        return executeJustice(message, "散佈惡意授權連結或跳轉網址", 'BAN');
+    const criticalLinks = ['discord.com/oauth2/authorize', '新增應用程式', 'oauth2/authorize', 'bit.ly', 't.me', 'discord.gg/', 'discord.com/invite/'];
+    const isMaliciousBot = author.bot || webhookId;
+
+    if (isMaliciousBot && criticalLinks.some(link => content.toLowerCase().includes(link))) {
+        return executeJustice(message, "攔截到外部機器人散佈可疑連結", 'BAN');
     }
 
     if (message.mentions.everyone && author.id !== message.guild.ownerId) {
