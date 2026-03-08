@@ -42,11 +42,17 @@ const SYSTEM_STATE = {
     msgLogs: new Collection(),
     contentFingerprints: new Collection(),
     cooldowns: new Set(),
+    roleTracker: new Collection(),
     stats: {
         punishedCount: 0,
         cleanedCount: 0,
         startTime: Date.now()
     }
+};
+
+const ROLE_PROTECT_CONFIG = {
+    MAX_ROLES_PER_WINDOW: 3, 
+    WINDOW_MS: 10000,
 };
 
 const ROAST_MATRIX = [
@@ -131,7 +137,9 @@ async function massPurge(channel, userId) {
 async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_TYPE) {
     const { author, member, channel, guild, webhookId } = message;
 
-if (member && member.permissions.has(PermissionFlagsBits.Administrator)) return;
+    if (member && member.permissions.has(PermissionFlagsBits.Administrator)) {
+return await triggerAntiNuke(guild, author, `管理員行為異常: ${reason}`);
+}
     if (author.id === guild.ownerId) return;
     
     await message.delete().catch(() => {});
@@ -180,6 +188,44 @@ if (member && member.permissions.has(PermissionFlagsBits.Administrator)) return;
         if (modLogChannel) await modLogChannel.send(`處決失敗：無法處理 ${author.tag}，請檢查階級。`);
     } finally {
         setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 60000);
+    }
+}
+
+async function triggerAntiNuke(guild, executor, reason) {
+    const member = await guild.members.fetch(executor.id).catch(() => null);
+    if (!member) return;
+
+    console.log(`[‼️ 緊急反制] ${executor.tag} 觸發了 ${reason}`);
+
+    // 1. 立即解除該管理員的所有權限 (前提：機器人職位必須比他高)
+    if (member.manageable) {
+        try {
+            await member.roles.set([], `[GodShield 緊急反制] ${reason}`);
+        } catch (e) {
+            console.error("無法解除權限:", e.message);
+        }
+    }
+
+    // 2. 發送警告與嘲諷
+    const modLog = guild.channels.cache.find(ch => ch.name === '⛔│modlog') || guild.systemChannel;
+    if (modLog) {
+        const nukeEmbed = new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('🚨 偵測到高階權限炸群 🚨')
+            .setDescription(`## ${getRandomRoast()}`)
+            .addFields(
+                { name: '現行犯', value: `${executor.tag} (\`${executor.id}\`)` },
+                { name: '惡意行為', value: `\`${reason}\`` },
+                { name: '系統處置', value: `已剝離所有身分組並封鎖行動` }
+            )
+            .setTimestamp();
+        await modLog.send({ embeds: [nukeEmbed] }).catch(() => {});
+    }
+
+    // 3. 直接封鎖
+    if (member.bannable) {
+        await member.ban({ deleteMessageSeconds: 604800, reason: `[GodShield Anti-Nuke] ${reason}` }).catch(() => {});
+        SYSTEM_STATE.stats.punishedCount++;
     }
 }
 
