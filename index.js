@@ -89,19 +89,26 @@ async function massPurge(channel, userId) {
 async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_TYPE) {
     const { author, member, channel, guild, webhookId } = message;
 
+    // 1. 無論是否在冷卻，只要進來就先刪掉當下這條違規訊息
+    await message.delete().catch(() => {});
+
     if (author.id === guild.ownerId) return;
 
+    // 2. 檢查冷卻 (這決定要不要發嘲諷文字和面板)
     if (SYSTEM_STATE.cooldowns.has(author.id)) return;
     SYSTEM_STATE.cooldowns.add(author.id);
 
+    // 3. 執行大量清理 (找出過去 100 則內的違規訊息)
+    const cleaned = await massPurge(channel, author.id);
+
     const modLogChannel = guild.channels.cache.find(ch => ch.name === '⛔│modlog');
 
-    await message.delete().catch(() => {});
-    const cleaned = await massPurge(channel, author.id);
+    // 4. 現場嘲諷與後台面板
+    await channel.send(`*"${getRandomRoast()}"*`).catch(() => {});
 
     const justiceEmbed = new EmbedBuilder()
         .setColor(CONFIG.THEME.COLOR_CRITICAL)
-        .setTitle('系統裁決：永久驅逐與抹除')
+        .setTitle('🚫 【 系統裁決：永久驅逐與抹除 】')
         .setThumbnail(author.displayAvatarURL())
         .addFields(
             { name: '罪犯帳號', value: `**${author.tag}** (\`${author.id}\`)`, inline: false },
@@ -112,17 +119,16 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
         .setFooter({ text: 'GodShield 防護核心 | 錄影存證中' })
         .setTimestamp();
 
-    await channel.send(`*"${getRandomRoast()}"*`).catch(() => {});
-
     if (modLogChannel) {
         await modLogChannel.send({ embeds: [justiceEmbed] }).catch(() => {});
     }
 
+    // 5. 處罰程序
     try {
         if (webhookId) {
             const webhooks = await channel.fetchWebhooks();
             const targetWebhook = webhooks.get(webhookId);
-            if (targetWebhook) await targetWebhook.delete('惡意 Webhook 洗版攔截');
+            if (targetWebhook) await targetWebhook.delete('惡意 Webhook 攔截');
         } else {
             if (type === 'BAN') {
                 await member.ban({ deleteMessageSeconds: 86400, reason: `[ANTI-RAID] ${reason}` });
@@ -132,7 +138,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
             SYSTEM_STATE.stats.punishedCount++;
         }
     } catch (e) {
-        if (modLogChannel) await modLogChannel.send(`處決失敗：無法封鎖 ${author.tag}，權限不足！`);
+        if (modLogChannel) await modLogChannel.send(`❌ 處決失敗：無法處理 ${author.tag}，請檢查階級。`);
     } finally {
         setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 10000);
     }
