@@ -154,9 +154,102 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     }
 }
 
-client.once(Events.ClientReady, (c) => {
+client.once(Events.ClientReady, async (c) => {
     console.log(`GodShield-Bot 在線: ${c.user.tag}`);
-    client.user.setActivity('掃描垃圾機器人...', { type: ActivityType.Watching });
+    client.user.setActivity('實時防護中', { type: ActivityType.Watching });
+
+    const commands = [
+    {
+        name: 'gs-stats',
+        description: '查看 GodShield 目前的處決戰績'
+    },
+    {
+        name: 'gs-purge',
+        description: '刪除違規成員的所有訊息 (最近 100 則)',
+        options: [
+            {
+                name: 'user',
+                type: 6,
+                description: '要清理訊息的對象',
+                required: true
+            }
+        ]
+    },
+    {
+        name: 'gs-unban',
+        description: '解除違規成員的封鎖狀態',
+        options: [
+            {
+                name: 'user_id',
+                type: 3,
+                description: '要解除封鎖的用戶 ID',
+                required: true
+            }
+        ]
+    }
+];
+
+    try {
+        await client.application.commands.set(commands);
+        console.log('斜線指令已同步到 Discord 全域伺服器');
+    } catch (error) {
+        console.error('同步指令時發生錯誤:', error);
+    }
+});
+
+client.on(Events.InteractionCreate, async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+
+    const { commandName, options, guild, member } = interaction;
+
+    if (!member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+        return interaction.reply({ content: '抱歉，此指令僅限擁有「管理訊息」權限的成員使用。', ephemeral: true });
+    }
+
+    if (commandName === 'gs-stats') {
+        const statsEmbed = new EmbedBuilder()
+            .setTitle('GodShield 系統數據報告')
+            .setColor(CONFIG.THEME.COLOR_INFO)
+            .addFields(
+                { name: '累計處決', value: `\`${SYSTEM_STATE.stats.punishedCount}\` 次`, inline: true },
+                { name: '清理訊息', value: `\`${SYSTEM_STATE.stats.cleanedCount}\` 則`, inline: true },
+                { name: '運行時長', value: `\`${getUptime()}\``, inline: true }
+            )
+            .setTimestamp();
+        await interaction.reply({ embeds: [statsEmbed] });
+    }
+    
+    if (commandName === 'gs-purge') {
+        const targetUser = options.getUser('user');
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+            const fetched = await interaction.channel.messages.fetch({ limit: 100 });
+            const userMessages = fetched.filter(m => m.author.id === targetUser.id);
+            
+            if (userMessages.size === 0) {
+                return interaction.editReply(`在最近的記錄中找不到 ${targetUser.tag} 的訊息。`);
+            }
+
+            const deleted = await interaction.channel.bulkDelete(userMessages, true);
+            SYSTEM_STATE.stats.cleanedCount += deleted.size;
+            interaction.editReply(`已成功移除 ${targetUser.tag} 的 \`${deleted.size}\` 則違規訊息。`);
+        } catch (err) {
+            interaction.editReply(`清理執行失敗：${err.message}`);
+        }
+    }
+
+    if (commandName === 'gs-unban') {
+        const userId = options.getString('user_id');
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+            await guild.members.unban(userId);
+            interaction.editReply(`已成功解除用戶 (\`${userId}\`) 的封鎖狀態。`);
+        } catch (err) {
+            interaction.editReply(`無法解除封鎖，請檢查 ID 是否正確。`);
+        }
+    }
 });
 
 client.on(Events.MessageCreate, async (message) => {
