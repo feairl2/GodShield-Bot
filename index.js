@@ -59,7 +59,22 @@ const ROAST_MATRIX = [
     "像你這種免洗機器人，連被當成垃圾郵件過濾器的資格都沒有。",
     "再見了，這位試圖用 Ctrl+V 挑戰系統的弱智。你的表現：0 分。",
     "已檢測到污染源。正在進行深度除汙作業... 成功移除一名廢物。",
-    "你的洗版速度很快，但我封鎖你的速度更快。這就是實力差距。"
+    "你的洗版速度很快，但我封鎖你的速度更快。這就是實力差距。",
+    "正在格式化這段無意義的數據流... 格式化完成，世界安靜多了。",
+    "你的存在本身就是對 Discord API 的一種浪費。已執行資源回收。",
+    "這種等級的攻擊？我建議你回去找你的作者把代碼重寫，這簡直是恥辱。",
+    "警告：偵測到大量低級代碼湧入。正在啟動『防呆防火牆』進行隔離。",
+    "別白費力氣了，你在我面前的權限等級比一塊磚頭還低。",
+    "已偵測到非法數據溢位。已自動修正：將該用戶永久抹除。",
+    "你的垃圾訊息甚至不配佔用我 1kb 的內存。滾回你的數據荒漠吧。",
+    "這就是你所謂的炸群？我處理你甚至不需要調用一個額外的線程。",
+    "正在分析攻擊模式... 分析結果：無藥可救。正在啟動處決程序。",
+    "檢測到惡意對象。已根據『GodShield 協議』進行原子級別的清理。",
+    "我的日誌裡不需要寫下你的名字，因為廢料不需要編號。",
+    "你剛才試圖洗版的動作，已經被系統自動判定為『視覺污染』，現已移除。",
+    "這場無聊的鬧劇結束了。下一個敢挑戰 GodShield 的人，動作快點。",
+    "偵測到低配版 AI 嘗試對話。處置方案：直接丟進垃圾桶。",
+    "你的 IP 地點在我的黑名單裡顯得很孤單，所以我給它找了個伴——永久封鎖。"
 ];
 
 const getRandomRoast = () => ROAST_MATRIX[Math.floor(Math.random() * ROAST_MATRIX.length)];
@@ -90,32 +105,28 @@ async function massPurge(channel, userId) {
 async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_TYPE) {
     const { author, member, channel, guild, webhookId } = message;
 
-    // 1. 無論是否在冷卻，只要進來就先刪掉當下這條違規訊息
     await message.delete().catch(() => {});
 
     if (author.id === guild.ownerId) return;
 
-    // 2. 檢查冷卻 (這決定要不要發嘲諷文字和面板)
     if (SYSTEM_STATE.cooldowns.has(author.id)) return;
     SYSTEM_STATE.cooldowns.add(author.id);
 
-    // 3. 執行大量清理 (找出過去 100 則內的違規訊息)
     const cleaned = await massPurge(channel, author.id);
 
     const modLogChannel = guild.channels.cache.find(ch => ch.name === '⛔│modlog');
 
-    // 4. 現場嘲諷與後台面板
     await channel.send(`*"${getRandomRoast()}"*`).catch(() => {});
 
     const justiceEmbed = new EmbedBuilder()
         .setColor(CONFIG.THEME.COLOR_CRITICAL)
-        .setTitle('🚫 【 系統裁決：永久驅逐與抹除 】')
+        .setTitle('系統裁決：永久驅逐與抹除')
         .setThumbnail(author.displayAvatarURL())
         .addFields(
             { name: '罪犯帳號', value: `**${author.tag}** (\`${author.id}\`)`, inline: false },
             { name: '裁決罪名', value: `\`${reason}\``, inline: true },
-            { name: '清理成果', value: `\`${cleaned}\` 則垃圾訊息`, inline: true },
-            { name: '現場頻道', value: `${channel}`, inline: true }
+            { name: '處置成果', value: `\`${cleaned}\` 則垃圾訊息`, inline: true },
+            { name: '案發頻道', value: `${channel}`, inline: true }
         )
         .setFooter({ text: 'GodShield 防護核心 | 錄影存證中' })
         .setTimestamp();
@@ -124,7 +135,6 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
         await modLogChannel.send({ embeds: [justiceEmbed] }).catch(() => {});
     }
 
-    // 5. 處罰程序
     try {
         if (webhookId) {
             const webhooks = await channel.fetchWebhooks();
@@ -139,7 +149,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
             SYSTEM_STATE.stats.punishedCount++;
         }
     } catch (e) {
-        if (modLogChannel) await modLogChannel.send(`❌ 處決失敗：無法處理 ${author.tag}，請檢查階級。`);
+        if (modLogChannel) await modLogChannel.send(`處決失敗：無法處理 ${author.tag}，請檢查階級。`);
     } finally {
         setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 10000);
     }
