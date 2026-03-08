@@ -90,22 +90,15 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     const { author, member, channel, guild, webhookId } = message;
 
     if (author.id === guild.ownerId) return;
+
     if (SYSTEM_STATE.cooldowns.has(author.id)) return;
     SYSTEM_STATE.cooldowns.add(author.id);
 
+    const modLogChannel = guild.channels.cache.find(ch => ch.name === '⛔│modlog');
+
     await message.delete().catch(() => {});
-
-    if (webhookId) {
-        const cleaned = await massPurge(channel, webhookId);
-        const webhooks = await channel.fetchWebhooks();
-        const targetWebhook = webhooks.get(webhookId);
-        if (targetWebhook) await targetWebhook.delete('惡意 Webhook 洗版攔截');
-        await channel.send(`**偵測到惡意 Webhook 攻擊，已執行『拔除插頭』作業，清理 ${cleaned} 則訊息。**`);
-        SYSTEM_STATE.cooldowns.delete(author.id);
-        return;
-    }
-
     const cleaned = await massPurge(channel, author.id);
+
     const justiceEmbed = new EmbedBuilder()
         .setColor(CONFIG.THEME.COLOR_CRITICAL)
         .setTitle('系統裁決：永久驅逐與抹除')
@@ -114,21 +107,32 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
             { name: '罪犯帳號', value: `**${author.tag}** (\`${author.id}\`)`, inline: false },
             { name: '裁決罪名', value: `\`${reason}\``, inline: true },
             { name: '清理成果', value: `\`${cleaned}\` 則垃圾訊息`, inline: true },
-            { name: '執行官評價', value: `*"${getRandomRoast()}"*` }
+            { name: '現場頻道', value: `${channel}`, inline: true }
         )
-        .setFooter({ text: 'GodShield 防護核心 | 絕不留活口' })
+        .setFooter({ text: 'GodShield 防護核心 | 錄影存證中' })
         .setTimestamp();
 
+    await channel.send(`*"${getRandomRoast()}"*`).catch(() => {});
+
+    if (modLogChannel) {
+        await modLogChannel.send({ embeds: [justiceEmbed] }).catch(() => {});
+    }
+
     try {
-        if (type === 'BAN') {
-            await member.ban({ deleteMessageSeconds: 86400, reason: `[ANTI-RAID] ${reason}` });
+        if (webhookId) {
+            const webhooks = await channel.fetchWebhooks();
+            const targetWebhook = webhooks.get(webhookId);
+            if (targetWebhook) await targetWebhook.delete('惡意 Webhook 洗版攔截');
         } else {
-            if (member.kickable) await member.kick(`[ANTI-RAID] ${reason}`);
+            if (type === 'BAN') {
+                await member.ban({ deleteMessageSeconds: 86400, reason: `[ANTI-RAID] ${reason}` });
+            } else if (member.kickable) {
+                await member.kick(`[ANTI-RAID] ${reason}`);
+            }
+            SYSTEM_STATE.stats.punishedCount++;
         }
-        SYSTEM_STATE.stats.punishedCount++;
-        await channel.send({ content: `**偵測到違規自動化行為，正在處決...**`, embeds: [justiceEmbed] });
     } catch (e) {
-        await channel.send(`無法完全處決 ${author.tag}，請檢查管理員權限順序。`);
+        if (modLogChannel) await modLogChannel.send(`處決失敗：無法封鎖 ${author.tag}，權限不足！`);
     } finally {
         setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 10000);
     }
