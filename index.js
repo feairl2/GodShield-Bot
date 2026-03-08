@@ -163,18 +163,20 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     }
 
     try {
-        if (webhookId) {
-            const webhooks = await channel.fetchWebhooks();
-            const targetWebhook = webhooks.get(webhookId);
-            if (targetWebhook) await targetWebhook.delete('惡意 Webhook 攔截');
-        } else {
-            if (type === 'BAN') {
-                await member.ban({ deleteMessageSeconds: 86400, reason: `[ANTI-RAID] ${reason}` });
-            } else if (member.kickable) {
-                await member.kick(`[ANTI-RAID] ${reason}`);
-            }
-            SYSTEM_STATE.stats.punishedCount++;
-        }
+    if (webhookId) {
+        const webhooks = await channel.fetchWebhooks();
+        const targetWebhook = webhooks.get(webhookId);
+        if (targetWebhook) await targetWebhook.delete('惡意 Webhook 攔截');
+    } else {
+        
+        if (member.moderatable) await member.timeout(60000, "處決前預防性禁言");
+        
+        await member.ban({ deleteMessageSeconds: 86400, reason: `[先禁後斬] ${reason}` });
+        
+        SYSTEM_STATE.stats.punishedCount++;
+        await channel.send(`*(已執行先禁後斬：${author.tag} 永久驅逐)*`).catch(() => {});
+    }
+}
     } catch (e) {
         if (modLogChannel) await modLogChannel.send(`處決失敗：無法處理 ${author.tag}，請檢查階級。`);
     } finally {
