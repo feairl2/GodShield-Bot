@@ -1,0 +1,14 @@
+{
+  "name": "godshield-bot",
+  "version": "1.0.0",
+  "description": "GodShield Discord Anti-Raid Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "GodShield",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1"
+  }
+}
