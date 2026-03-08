@@ -121,7 +121,6 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
         const webhooks = await channel.fetchWebhooks();
         const targetWebhook = webhooks.get(webhookId);
         if (targetWebhook) await targetWebhook.delete('惡意 Webhook 攔截');
-        await channel.send(`🛡️ **GodShield 斬首行動**：惡意 Webhook 已抹除。`);
     } 
     else if (SYSTEM_STATE.warnedUsers.has(author.id)) {
         try {
@@ -137,7 +136,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
         try {
             await member.timeout(60000, `[階梯懲罰] 首次違規預防性禁言：${reason}`);
             SYSTEM_STATE.warnedUsers.add(author.id);
-            await channel.send(`⚠️ **${author.tag} 警告**：偵測到可疑行為，已暫時禁言 60 秒。再犯將直接封鎖。`).catch(() => {});
+            await channel.send(`**${author.tag} 警告**：偵測到可疑行為，已暫時禁言 60 秒。再犯將直接封鎖。`).catch(() => {});
         } catch (e) {
             await channel.send(`警告：無法禁言 ${author.tag}，請管理員介入。`);
         }
