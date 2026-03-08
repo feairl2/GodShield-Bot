@@ -100,7 +100,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
         const webhooks = await channel.fetchWebhooks();
         const targetWebhook = webhooks.get(webhookId);
         if (targetWebhook) await targetWebhook.delete('惡意 Webhook 洗版攔截');
-        await channel.send(`🛡️ **偵測到惡意 Webhook 攻擊，已執行『拔除插頭』作業，清理 ${cleaned} 則訊息。**`);
+        await channel.send(`**偵測到惡意 Webhook 攻擊，已執行『拔除插頭』作業，清理 ${cleaned} 則訊息。**`);
         SYSTEM_STATE.cooldowns.delete(author.id);
         return;
     }
@@ -108,7 +108,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     const cleaned = await massPurge(channel, author.id);
     const justiceEmbed = new EmbedBuilder()
         .setColor(CONFIG.THEME.COLOR_CRITICAL)
-        .setTitle('🚫 【 系統裁決：永久驅逐與抹除 】')
+        .setTitle('系統裁決：永久驅逐與抹除')
         .setThumbnail(author.displayAvatarURL())
         .addFields(
             { name: '罪犯帳號', value: `**${author.tag}** (\`${author.id}\`)`, inline: false },
@@ -126,9 +126,9 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
             if (member.kickable) await member.kick(`[ANTI-RAID] ${reason}`);
         }
         SYSTEM_STATE.stats.punishedCount++;
-        await channel.send({ content: `🚨 **偵測到違規自動化行為，正在處決...**`, embeds: [justiceEmbed] });
+        await channel.send({ content: `**偵測到違規自動化行為，正在處決...**`, embeds: [justiceEmbed] });
     } catch (e) {
-        await channel.send(`❌ 無法完全處決 ${author.tag}，請檢查管理員權限順序。`);
+        await channel.send(`無法完全處決 ${author.tag}，請檢查管理員權限順序。`);
     } finally {
         setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 10000);
     }
@@ -211,7 +211,7 @@ client.on(Events.GuildMemberAdd, async (member) => {
     const accountAge = (Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60);
     if (accountAge < CONFIG.PUNISHMENT.MIN_AGE_HOURS) {
         const channel = member.guild.systemChannel || member.guild.channels.cache.find(c => c.type === ChannelType.GuildText);
-        if (channel) channel.send(`⚠️ **高風險帳號警告**: ${member.user.tag} (建立不足12小時)`);
+        if (channel) channel.send(`**高風險帳號警告**: ${member.user.tag} (建立不足12小時)`);
     }
 });
 
