@@ -24,7 +24,8 @@ const CONFIG = {
         MAX_MESSAGES: 3,
         WINDOW: 2000,
         DUPLICATE_LIMIT: 2,
-        EMOJI_LIMIT: 8,
+        EMOJI_LIMIT: 10,
+        MAX_CHARS: 500,
     },
     PUNISHMENT: {
         DEFAULT_TYPE: 'BAN',
@@ -257,6 +258,10 @@ client.on(Events.MessageCreate, async (message) => {
 
     const { author, content, channel, member, webhookId } = message;
     const now = Date.now();
+
+    if (content.length > CONFIG.SPAM.MAX_CHARS) {
+        return executeJustice(message, `異常超長訊息 (超過 ${CONFIG.SPAM.MAX_CHARS} 字)`, 'BAN');
+    }
 
     const criticalLinks = ['discord.com/oauth2/authorize', '新增應用程式', 'oauth2/authorize', 'bit.ly', 't.me'];
     if (criticalLinks.some(link => content.toLowerCase().includes(link))) {
