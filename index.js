@@ -76,8 +76,6 @@ const ROAST_MATRIX = [
     "這場無聊的鬧劇結束了。下一個敢挑戰 GodShield 的，動作快點，我趕時間。",
     "偵測到低配版 AI 嘗試對話。處置方案：直接丟進垃圾桶，別浪費我電費。",
     "你的 IP 地點在我的黑名單裡顯得很孤單，所以我幫你找了個伴——永久封鎖。",
-
-    // --- 新增 25 則 (更狠、更專業) ---
     "偵測到無效請求。你的炸群腳本寫得像是我奶奶寫的網頁。下去吧。",
     "這就是你的攻擊？我跑個 Hello World 都比你這動靜大。",
     "已啟動『神盾協議』。偵測到低階垃圾，自動清道中... 搞定。",
@@ -174,7 +172,6 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
         await member.ban({ deleteMessageSeconds: 86400, reason: `[先禁後斬] ${reason}` });
         
         SYSTEM_STATE.stats.punishedCount++;
-        await channel.send(`*(已執行先禁後斬：${author.tag} 永久驅逐)*`).catch(() => {});
     }
     } catch (e) {
         if (modLogChannel) await modLogChannel.send(`處決失敗：無法處理 ${author.tag}，請檢查階級。`);
