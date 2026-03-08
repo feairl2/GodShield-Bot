@@ -143,7 +143,6 @@ client.once(Events.ClientReady, (c) => {
 });
 
 client.on(Events.MessageCreate, async (message) => {
-    if (!message.guild || message.author.bot) return;
 
     const { author, content, channel, member } = message;
     const normalized = content.toLowerCase().replace(/[^a-z0-9]/g, '');
