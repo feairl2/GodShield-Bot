@@ -144,7 +144,6 @@ client.once(Events.ClientReady, (c) => {
 
 client.on(Events.MessageCreate, async (message) => {
     if (!message.guild || message.author.bot) return;
-    if (message.member?.permissions.has(PermissionFlagsBits.Administrator)) return;
 
     const { author, content, channel, member } = message;
     const now = Date.now();
