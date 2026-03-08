@@ -150,7 +150,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     } catch (e) {
         if (modLogChannel) await modLogChannel.send(`處決失敗：無法處理 ${author.tag}，請檢查階級。`);
     } finally {
-        setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 10000);
+        setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 60000);
     }
 }
 
