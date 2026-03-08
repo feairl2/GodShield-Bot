@@ -115,7 +115,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     const cleaned = await massPurge(channel, author.id);
     const modLogChannel = guild.channels.cache.find(ch => ch.name === '⛔│modlog');
 
-    await channel.send(`*${getRandomRoast()}*`).catch(() => {});
+    await channel.send(`## ${getRandomRoast()}`).catch(() => {});
 
     const justiceEmbed = new EmbedBuilder()
         .setColor(CONFIG.THEME.COLOR_CRITICAL)
