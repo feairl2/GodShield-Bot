@@ -35,6 +35,10 @@ const CONFIG = {
     THEME: {
         COLOR_CRITICAL: 0xFF0000,
         COLOR_INFO: 0x00FF00,
+    },
+    CHANNEL_PROTECT: {
+        MAX_ACTIONS_PER_WINDOW: 3,
+        WINDOW_MS: 10000,
     }
 };
 
@@ -43,6 +47,7 @@ const SYSTEM_STATE = {
     contentFingerprints: new Collection(),
     cooldowns: new Set(),
     roleTracker: new Collection(),
+    channelTracker: new Collection(),
     stats: {
         punishedCount: 0,
         cleanedCount: 0,
@@ -56,7 +61,6 @@ const ROLE_PROTECT_CONFIG = {
 };
 
 const ROAST_MATRIX = [
-    // --- 原有 25 則 ---
     "笑死，這種洗版頻率，你家伺服器是跑在烤麵包機上面嗎？",
     "處決完了。垃圾就該待在回收桶，別來我這頻道丟人現眼。",
     "你寫代碼的時候是睡著了嗎？這邏輯簡直爛到我不想評價。",
@@ -195,9 +199,8 @@ async function triggerAntiNuke(guild, executor, reason) {
     const member = await guild.members.fetch(executor.id).catch(() => null);
     if (!member) return;
 
-    console.log(`[‼️ 緊急反制] ${executor.tag} 觸發了 ${reason}`);
+    console.log(`[緊急反制] ${executor.tag} 觸發了 ${reason}`);
 
-    // 1. 立即解除該管理員的所有權限 (前提：機器人職位必須比他高)
     if (member.manageable) {
         try {
             await member.roles.set([], `[GodShield 緊急反制] ${reason}`);
@@ -206,12 +209,11 @@ async function triggerAntiNuke(guild, executor, reason) {
         }
     }
 
-    // 2. 發送警告與嘲諷
     const modLog = guild.channels.cache.find(ch => ch.name === '⛔│modlog') || guild.systemChannel;
     if (modLog) {
         const nukeEmbed = new EmbedBuilder()
             .setColor(0xFF0000)
-            .setTitle('🚨 偵測到高階權限炸群 🚨')
+            .setTitle('偵測到高階權限炸群')
             .setDescription(`## ${getRandomRoast()}`)
             .addFields(
                 { name: '現行犯', value: `${executor.tag} (\`${executor.id}\`)` },
@@ -221,8 +223,6 @@ async function triggerAntiNuke(guild, executor, reason) {
             .setTimestamp();
         await modLog.send({ embeds: [nukeEmbed] }).catch(() => {});
     }
-
-    // 3. 直接封鎖
     if (member.bannable) {
         await member.ban({ deleteMessageSeconds: 604800, reason: `[GodShield Anti-Nuke] ${reason}` }).catch(() => {});
         SYSTEM_STATE.stats.punishedCount++;
@@ -399,6 +399,82 @@ client.on(Events.GuildMemberAdd, async (member) => {
         const channel = member.guild.systemChannel || member.guild.channels.cache.find(c => c.type === ChannelType.GuildText);
         if (channel) channel.send(`**高風險帳號警告**: ${member.user.tag} (建立不足12小時)`);
     }
+});
+
+client.on(Events.GuildRoleCreate, async (role) => {
+    const guild = role.guild;
+    
+    try {
+        const fetchedLogs = await guild.fetchAuditLogs({
+            limit: 1,
+            type: 24, // 24 = RoleCreate
+        });
+        const roleLog = fetchedLogs.entries.first();
+        if (!roleLog) return;
+
+        const { executor } = roleLog;
+        if (executor.id === client.user.id || executor.id === guild.ownerId) return;
+
+        const now = Date.now();
+        const userData = SYSTEM_STATE.roleTracker.get(executor.id) || [];
+        const recentCreations = userData.filter(t => now - t < ROLE_PROTECT_CONFIG.WINDOW_MS);
+        
+        recentCreations.push(now);
+        SYSTEM_STATE.roleTracker.set(executor.id, recentCreations);
+
+        if (recentCreations.length >= ROLE_PROTECT_CONFIG.MAX_ROLES_PER_WINDOW) {
+            await role.delete("自動清理炸群身分組").catch(() => {});
+            await triggerAntiNuke(guild, executor, "瘋狂創建身分組 (Anti-Role-Spam)");
+        }
+    } catch (err) {
+        console.error("處理身分組防護時出錯:", err);
+    }
+});
+
+client.on(Events.ChannelCreate, async (channel) => {
+    const guild = channel.guild;
+    try {
+        const fetchedLogs = await guild.fetchAuditLogs({ limit: 1, type: 10 }); // 10 = ChannelCreate
+        const log = fetchedLogs.entries.first();
+        if (!log || log.executor.id === client.user.id || log.executor.id === guild.ownerId) return;
+
+        const { executor } = log;
+        const now = Date.now();
+        const userData = SYSTEM_STATE.channelTracker.get(executor.id) || [];
+        const recentActions = userData.filter(t => now - t < CONFIG.CHANNEL_PROTECT.WINDOW_MS);
+        
+        recentActions.push(now);
+        SYSTEM_STATE.channelTracker.set(executor.id, recentActions);
+
+        if (recentActions.length >= CONFIG.CHANNEL_PROTECT.MAX_ACTIONS_PER_WINDOW) {
+            await channel.delete("GodShield: 大規模創建頻道防禦").catch(() => {});
+            await triggerAntiNuke(guild, executor, "大規模創建頻道 (Nuke Attack)");
+        }
+    } catch (err) { console.error("頻道創建防護出錯:", err); }
+});
+
+client.on(Events.ChannelDelete, async (channel) => {
+    const guild = channel.guild;
+    try {
+        const fetchedLogs = await guild.fetchAuditLogs({ limit: 1, type: 12 }); // 12 = ChannelDelete
+        const log = fetchedLogs.entries.first();
+        if (!log || log.executor.id === client.user.id || log.executor.id === guild.ownerId) return;
+
+        const { executor } = log;
+        const now = Date.now();
+        const userData = SYSTEM_STATE.channelTracker.get(executor.id) || [];
+        const recentActions = userData.filter(t => now - t < CONFIG.CHANNEL_PROTECT.WINDOW_MS);
+        
+        recentActions.push(now);
+        SYSTEM_STATE.channelTracker.set(executor.id, recentActions);
+
+        if (recentActions.length >= CONFIG.CHANNEL_PROTECT.MAX_ACTIONS_PER_WINDOW) {
+            await triggerAntiNuke(guild, executor, "大規模刪除頻道 (Nuke Attack)");
+            
+            const sysChannel = guild.systemChannel;
+            if (sysChannel) sysChannel.send("**偵測到大規模刪除頻道動作！系統已緊急處決破壞者。**");
+        }
+    } catch (err) { console.error("頻道刪除防護出錯:", err); }
 });
 
 process.on('unhandledRejection', (reason) => console.error(reason));
