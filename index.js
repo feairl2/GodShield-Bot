@@ -176,7 +176,6 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
         SYSTEM_STATE.stats.punishedCount++;
         await channel.send(`*(已執行先禁後斬：${author.tag} 永久驅逐)*`).catch(() => {});
     }
-}
     } catch (e) {
         if (modLogChannel) await modLogChannel.send(`處決失敗：無法處理 ${author.tag}，請檢查階級。`);
     } finally {
