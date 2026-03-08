@@ -1,14 +1,30 @@
 {
-  "name": "godshield-bot",
-  "version": "1.0.0",
-  "description": "GodShield Discord Anti-Raid Bot",
+  "name": "spectra-ultra-antiraid",
+  "version": "7.0.0",
+  "description": "Industrial Grade Discord Anti-Spam & Execution System",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
+  "engines": {
+    "node": ">=18.0.0"
   },
-  "author": "GodShield",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "monitor": "nodemon index.js"
+  },
+  "keywords": [
+    "discord",
+    "antiraid",
+    "antispam",
+    "security",
+    "moderation"
+  ],
+  "author": "God Shield",
   "license": "MIT",
   "dependencies": {
-    "discord.js": "^14.14.1"
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
   }
 }
