@@ -110,7 +110,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
             { name: '清理成果', value: `\`${cleaned}\` 則垃圾訊息`, inline: true },
             { name: '執行官評價', value: `*"${getRandomRoast()}"*` }
         )
-        .setFooter({ text: 'SPECTRA 防護核心 | 絕不留活口' })
+        .setFooter({ text: 'GodShield 防護核心 | 絕不留活口' })
         .setTimestamp();
 
     try {
@@ -189,13 +189,13 @@ client.on(Events.MessageCreate, async (message) => {
         return channel.send(`🤡 ${author}，別再刷表情符號了。這種行為真的很低端。`);
     }
 
-    if (content.startsWith('!spectra')) {
+    if (content.startsWith('!GodShield')) {
         const args = content.split(' ');
         const cmd = args[1];
 
         if (cmd === 'stats') {
             const statsEmbed = new EmbedBuilder()
-                .setTitle('📊 SPECTRA 系統運行狀況')
+                .setTitle('GodShield Bot 系統運行狀況')
                 .setColor(CONFIG.THEME.COLOR_INFO)
                 .addFields(
                     { name: '運作時間', value: `\`${getUptime()}\``, inline: true },
@@ -211,7 +211,7 @@ client.on(Events.MessageCreate, async (message) => {
         if (cmd === 'lockdown') {
             if (!member.permissions.has(PermissionFlagsBits.ManageGuild)) return;
             SYSTEM_STATE.lockdownActive = !SYSTEM_STATE.lockdownActive;
-            return channel.send(`🚧 **伺服器戒嚴模式已${SYSTEM_STATE.lockdownActive ? '開啟' : '關閉'}**。`);
+            return channel.send(`**伺服器戒嚴模式已${SYSTEM_STATE.lockdownActive ? '開啟' : '關閉'}**。`);
         }
     }
 });
@@ -233,11 +233,11 @@ client.on(Events.GuildMemberAdd, async (member) => {
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('[⚠️ 未處理的錯誤]', reason);
+    console.error('[未處理的錯誤]', reason);
 });
 
 process.on('uncaughtException', (err) => {
-    console.error('[🚨 致命錯誤]', err);
+    console.error('[致命錯誤]', err);
 });
 
 client.login(process.env.TOKEN);
