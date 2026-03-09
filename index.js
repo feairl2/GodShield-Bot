@@ -158,7 +158,6 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     SYSTEM_STATE.cooldowns.add(author.id);
 
     let executorId = null;
-    if (author.bot || webhookId) {
         try {
             const auditLogs = await guild.fetchAuditLogs({ limit: 5 });
             const entry = auditLogs.entries.find(e => 
