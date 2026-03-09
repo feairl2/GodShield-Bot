@@ -177,10 +177,10 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
                 .setAuthor({ name: 'GodShield 已成功攔截一次威脅', iconURL: client.user.displayAvatarURL() })
                 .setThumbnail(author.displayAvatarURL())
                 .addFields(
-                    { name: '違規成員', value: `${author} (\`${author.id}\`)`, inline: true },
+                    { name: '違規成員', value: `${author} (\`${author.id}\`)`, inline: false },
                     { name: '違反規則', value: `\`${reason}\`` },
                     { name: '刪除訊息', value: `\`${cleanedCount}\` 則訊息` },
-                    { name: '事發頻道', value: `${channel} (\`#${channel.name}\`)`, inline: true }
+                    { name: '事件頻道', value: `${channel} (\`#${channel.name}\`)`, inline: false }
                 )
                 .setTimestamp();
             await modLogChannel.send({ embeds: [logEmbed] }).catch(() => {});
