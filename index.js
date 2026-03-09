@@ -73,7 +73,10 @@ const ROAST_MATRIX = [
     "警告：維護提示，已成功過濾來自 ${target} 的非法數據流，連線路徑已永久關閉。"
 ];
 
-const getRandomRoast = () => ROAST_MATRIX[Math.floor(Math.random() * ROAST_MATRIX.length)];
+const getRandomRoast = (user) => {
+    const rawText = ROAST_MATRIX[Math.floor(Math.random() * ROAST_MATRIX.length)];
+    return rawText.replace('${target}', `<@${user.id}>`);
+};
 
 const getUptime = () => {
     const totalSeconds = (Date.now() - SYSTEM_STATE.stats.startTime) / 1000;
@@ -399,7 +402,7 @@ client.on(Events.GuildRoleCreate, async (role) => {
 client.on(Events.ChannelCreate, async (channel) => {
     const guild = channel.guild;
     try {
-        const fetchedLogs = await guild.fetchAuditLogs({ limit: 1, type: 10 }); // 10 = ChannelCreate
+        const fetchedLogs = await guild.fetchAuditLogs({ limit: 1, type: 10 });
         const log = fetchedLogs.entries.first();
         if (!log || log.executor.id === client.user.id || log.executor.id === guild.ownerId) return;
 
@@ -437,7 +440,7 @@ client.on(Events.ChannelDelete, async (channel) => {
             await triggerAntiNuke(guild, executor, "大規模刪除頻道事件");
             
             const sysChannel = guild.systemChannel;
-            if (sysChannel) sysChannel.send("**偵測到大規模刪除頻道動作，系統已緊急處決違規者**");
+            if (sysChannel) sysChannel.send("**偵測到大規模刪除頻道動作，系統已緊急封鎖違規者**");
         }
     } catch (err) { console.error("頻道刪除防護出錯:", err); }
 });
