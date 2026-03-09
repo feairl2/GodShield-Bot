@@ -50,6 +50,7 @@ const SYSTEM_STATE = {
     cooldowns: new Set(),
     roleTracker: new Collection(),
     channelTracker: new Collection(),
+    punishedCache: new Set(),
     stats: {
         punishedCount: 0,
         cleanedCount: 0,
@@ -255,10 +256,12 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
 }
 
 async function triggerAntiNuke(guild, executor, reason) {
+    if (SYSTEM_STATE.punishedCache.has(executor.id)) return;
     if (!executor.bot) {
         console.log(`[管理紀錄] 人類管理員 ${executor.tag} 執行了操作: ${reason}，系統不予攔截。`);
         return; 
     }
+    SYSTEM_STATE.punishedCache.add(executor.id);
     const member = await guild.members.fetch(executor.id).catch(() => null);
     
     console.log(`[緊急反制] 偵測到機器人 ${executor.tag} 觸發了 ${reason}`);
@@ -273,7 +276,7 @@ async function triggerAntiNuke(guild, executor, reason) {
 
     let inviterId = null;
     try {
-        const auditLogs = await guild.fetchAuditLogs({ limit: 5, type: AuditLogEvent.BotAdd });
+        const auditLogs = await guild.fetchAuditLogs({ limit: 10, type: AuditLogEvent.BotAdd });
         const entry = auditLogs.entries.find(e => e.target.id === executor.id);
         if (entry) inviterId = entry.executor.id;
     } catch (e) {
@@ -325,6 +328,7 @@ async function triggerAntiNuke(guild, executor, reason) {
 } catch (e) {
     console.error(`[封鎖失敗] 無法封鎖 ${executor.id}: ${e.message}`);
 }
+    setTimeout(() => SYSTEM_STATE.punishedCache.delete(executor.id), 30000);
 }
 
 client.once(Events.ClientReady, async (c) => {
