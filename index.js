@@ -152,9 +152,35 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     if (SYSTEM_STATE.cooldowns.has(author.id)) return;
     SYSTEM_STATE.cooldowns.add(author.id);
 
+    console.log(`[正義執行] 觸發對象: ${author.tag} (${author.id}), 原因: ${reason}`);
+
+    let cleanedCount = 0;
+    let isBanned = false;
+    let executorId = null;
+
     try {
-    
-        let executorId = null;
+        const roast = await getRandomRoast(author, guild);
+        await channel.send(roast).catch(() => {});
+        await message.delete().catch(() => {});
+    } catch (e) {
+        console.error("[階段一錯誤]", e.message);
+    }
+
+    try {
+        cleanedCount = await massPurge(channel, author.id);
+    } catch (e) {
+        console.error("[階段二錯誤] 清理失敗:", e.message);
+    }
+
+    try {
+        if (webhookId) {
+            const webhooks = await channel.fetchWebhooks().catch(() => new Collection());
+            const targetWebhook = webhooks.get(webhookId);
+            if (targetWebhook) {
+                await targetWebhook.delete('GodShield: 惡意 Webhook 來源').catch(() => {});
+            }
+        }
+
         const auditLogs = await guild.fetchAuditLogs({ limit: 5 }).catch(() => null);
         if (auditLogs) {
             const entry = auditLogs.entries.find(e => 
@@ -164,49 +190,57 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
             if (entry) executorId = entry.executor.id;
         }
 
-        const roast = await getRandomRoast(author, guild);
-        await channel.send(roast).catch(() => {});
+        try {
+            await guild.bans.create(author.id, { 
+                deleteMessageSeconds: 604800, 
+                reason: `[GodShield] ${reason}` 
+            });
+            isBanned = true;
+            SYSTEM_STATE.stats.punishedCount++;
+        } catch (banErr) {
+            console.error(`[封鎖失敗] 無法封鎖 ${author.tag}: 權限不足或對象職位太高`);
+            if (member && member.manageable) {
+                await member.timeout(3600000, "封鎖失敗，系統自動轉為禁言").catch(() => {});
+            }
+        }
 
-        await message.delete().catch(() => {});
-        const cleanedCount = await massPurge(channel, author.id);
+        if (executorId && executorId !== guild.ownerId) {
+            await guild.bans.create(executorId, { 
+                reason: `[連坐處分] 召喚惡意來源: ${reason}` 
+            }).catch(() => console.log(`[連坐失敗] 無法封鎖引進者 ${executorId}`));
+        }
 
+    } catch (e) {
+        console.error("[階段三錯誤]", e.message);
+    }
+
+    try {
         const modLogChannel = guild.channels.cache.find(ch => ch.name === '⛔│modlog');
         if (modLogChannel) {
             const logEmbed = new EmbedBuilder()
-                .setColor(CONFIG.THEME.COLOR_CRITICAL)
-                .setAuthor({ name: 'GodShield 已成功攔截一次威脅', iconURL: client.user.displayAvatarURL() })
+                .setColor(isBanned ? CONFIG.THEME.COLOR_CRITICAL : 0xFFAA00)
+                .setAuthor({ name: 'GodShield 安全攔截報告', iconURL: client.user.displayAvatarURL() })
                 .setThumbnail(author.displayAvatarURL())
                 .addFields(
                     { name: '違規成員', value: `${author} (\`${author.id}\`)`, inline: false },
-                    { name: '違反規則', value: `\`${reason}\`` },
-                    { name: '刪除訊息', value: `\`${cleanedCount}\` 則訊息` },
+                    { name: '違反規則', value: `\`${reason}\``, inline: true },
+                    { name: '處置結果', value: isBanned ? '永久封鎖' : '清理訊息/禁言', inline: true },
+                    { name: '刪除訊息', value: `\`${cleanedCount}\` 則`, inline: true },
                     { name: '事件頻道', value: `${channel} (\`#${channel.name}\`)`, inline: false }
                 )
                 .setTimestamp();
+
+            if (executorId) {
+                logEmbed.addFields({ name: '關聯引進者', value: `<@${executorId}> (\`${executorId}\`)` });
+            }
+
             await modLogChannel.send({ embeds: [logEmbed] }).catch(() => {});
         }
-
-        if (webhookId) {
-            const webhooks = await channel.fetchWebhooks();
-            const targetWebhook = webhooks.get(webhookId);
-            if (targetWebhook) await targetWebhook.delete('惡意源頭');
-        }
-        
-        if (executorId && executorId !== guild.ownerId) {
-            await guild.bans.create(executorId, { reason: `[連坐] 召喚惡意來源: ${reason}` }).catch(() => {});
-        }
-        
-        await guild.bans.create(author.id, { 
-            deleteMessageSeconds: 604800, // 自動刪除過去 7 天訊息
-            reason: `[GodShield] ${reason}` 
-        }).catch(() => {});
-
-        SYSTEM_STATE.stats.punishedCount++;
-    } catch (err) {
-        console.error("正義執行失敗:", err);
-    } finally {
-        setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 5000);
+    } catch (e) {
+        console.error("[階段四錯誤] 日誌發送失敗:", e.message);
     }
+
+    setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 5000);
 }
 
 async function triggerAntiNuke(guild, executor, reason) {
