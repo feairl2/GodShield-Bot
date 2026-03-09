@@ -130,19 +130,44 @@ const getUptime = () => {
 };
 
 async function massPurge(channel, userId) {
-    try {
-        const fetched = await channel.messages.fetch({ limit: 100 });
-        const userMessages = fetched.filter(m => m.author.id === userId || m.webhookId === userId);
-        
-        if (userMessages.size > 0) {
-            const deleted = await channel.bulkDelete(userMessages, true);
-            SYSTEM_STATE.stats.cleanedCount += deleted.size;
-            return deleted.size;
+    let totalDeleted = 0;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 10;
+    const DELAY_MS = 2000;
+
+    const performDelete = async () => {
+        try {
+            const fetched = await channel.messages.fetch({ limit: 100 });
+            const userMessages = fetched.filter(m => m.author.id === userId || m.webhookId === userId);
+            
+            if (userMessages.size > 0) {
+                const deleted = await channel.bulkDelete(userMessages, true);
+                totalDeleted += deleted.size;
+                SYSTEM_STATE.stats.cleanedCount += deleted.size;
+                console.log(`[第 ${attempts + 1} 次清理] 刪除了 ${deleted.size} 則訊息`);
+                return deleted.size;
+            }
+        } catch (err) {
+            if (!err.message.includes("14 days old")) {
+                console.error(`[清理異常] ${err.message}`);
+            }
         }
-    } catch (err) {
-        console.error(`[清理失敗] ${err.message}`);
-    }
-    return 0;
+        return 0;
+    };
+
+    const intervalId = setInterval(async () => {
+        attempts++;
+        await performDelete();
+
+        if (attempts >= MAX_ATTEMPTS) {
+            clearInterval(intervalId);
+            console.log(`[清理完成] 總計掃描 ${MAX_ATTEMPTS} 次，清除 ${totalDeleted} 則。`);
+        }
+    }, DELAY_MS);
+
+    await performDelete();
+
+    return totalDeleted;
 }
 
 async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_TYPE) {
@@ -240,7 +265,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
         console.error("[階段四錯誤] 日誌發送失敗:", e.message);
     }
 
-    setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 5000);
+    setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 20000);
 }
 
 async function triggerAntiNuke(guild, executor, reason) {
