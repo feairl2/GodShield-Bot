@@ -39,7 +39,7 @@ const CONFIG = {
         COLOR_INFO: 0x00FF00,
     },
     CHANNEL_PROTECT: {
-        MAX_ACTIONS_PER_WINDOW: 3,
+        MAX_ACTIONS_PER_WINDOW: 1,
         WINDOW_MS: 10000,
     }
 };
@@ -58,7 +58,7 @@ const SYSTEM_STATE = {
 };
 
 const ROLE_PROTECT_CONFIG = {
-    MAX_ROLES_PER_WINDOW: 3, 
+    MAX_ROLES_PER_WINDOW: 1, 
     WINDOW_MS: 10000,
 };
 
@@ -269,16 +269,48 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
 }
 
 async function triggerAntiNuke(guild, executor, reason) {
+    if (!executor.bot) {
+        console.log(`[管理紀錄] 人類管理員 ${executor.tag} 執行了操作: ${reason}，系統不予攔截。`);
+        return; 
+    }
     const member = await guild.members.fetch(executor.id).catch(() => null);
-    if (!member) return;
+    
+    console.log(`[緊急反制] 偵測到機器人 ${executor.tag} 觸發了 ${reason}`);
 
-    console.log(`[緊急反制] ${executor.tag} 觸發了 ${reason}`);
-
-    if (member.manageable) {
+    if (member && member.manageable) {
         try {
-            await member.roles.set([], `[GodShield 緊急反制] ${reason}`);
+            await member.roles.set([], `[GodShield 緊急反制] 機器人異常行為: ${reason}`);
         } catch (e) {
-            console.error("無法解除權限:", e.message);
+            console.error("無法解除該機器人權限:", e.message);
+        }
+    }
+
+    let inviterId = null;
+    try {
+        const auditLogs = await guild.fetchAuditLogs({ limit: 5, type: AuditLogEvent.BotAdd });
+        const entry = auditLogs.entries.find(e => e.target.id === executor.id);
+        if (entry) inviterId = entry.executor.id;
+    } catch (e) {
+        console.error("無法追蹤機器人引進者");
+    }
+
+    try {
+        await guild.bans.create(executor.id, { 
+            deleteMessageSeconds: 604800, 
+            reason: `[GodShield Anti-Nuke] 惡意機器人行為: ${reason}` 
+        });
+        SYSTEM_STATE.stats.punishedCount++;
+    } catch (e) {
+        console.error(`[封鎖失敗] 無法封鎖機器人 ${executor.id}: ${e.message}`);
+    }
+    if (inviterId && inviterId !== guild.ownerId) {
+        try {
+            await guild.bans.create(inviterId, { 
+                reason: `[連坐處分] 邀請惡意機器人 ${executor.tag} 進入伺服器並引發炸群行為` 
+            });
+            console.log(`[連坐處分] 已成功封鎖引進者 <@${inviterId}>`);
+        } catch (e) {
+            console.log(`[連坐失敗] 無法封鎖引進者 ${inviterId}`);
         }
     }
 
