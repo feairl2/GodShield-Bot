@@ -23,7 +23,7 @@ const CONFIG = {
     SPAM: {
         MAX_MESSAGES: 3,
         WINDOW: 2000,
-        DUPLICATE_LIMIT: 2,
+        DUPLICATE_LIMIT: 3,
         EMOJI_LIMIT: 10,
         MAX_CHARS: 350,
     },
