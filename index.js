@@ -147,14 +147,13 @@ async function massPurge(channel, userId) {
 
 async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_TYPE) {
     const { author, member, channel, guild, webhookId } = message;
-    
-    // 排除權限者與重複觸發
+
     if (author.id === guild.ownerId) return;
     if (SYSTEM_STATE.cooldowns.has(author.id)) return;
     SYSTEM_STATE.cooldowns.add(author.id);
 
     try {
-        // 1. 先抓黑手資料（趁人還沒被 BAN）
+    
         let executorId = null;
         const auditLogs = await guild.fetchAuditLogs({ limit: 5 }).catch(() => null);
         if (auditLogs) {
@@ -165,15 +164,12 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
             if (entry) executorId = entry.executor.id;
         }
 
-        // 2. 噴人（在處決前發送，成功率最高）
         const roast = await getRandomRoast(author, guild);
         await channel.send(roast).catch(() => {});
 
-        // 3. 清理現場
         await message.delete().catch(() => {});
         const cleanedCount = await massPurge(channel, author.id);
 
-        // 4. 發送 MODLOG 日誌
         const modLogChannel = guild.channels.cache.find(ch => ch.name === '⛔│modlog');
         if (modLogChannel) {
             const logEmbed = new EmbedBuilder()
@@ -190,14 +186,12 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
             await modLogChannel.send({ embeds: [logEmbed] }).catch(() => {});
         }
 
-        // 5. 最後執行處決（BAN）
         if (webhookId) {
             const webhooks = await channel.fetchWebhooks();
             const targetWebhook = webhooks.get(webhookId);
             if (targetWebhook) await targetWebhook.delete('惡意源頭');
         }
         
-        // 執行連坐 BAN
         if (executorId && executorId !== guild.ownerId) {
             await guild.bans.create(executorId, { reason: `[連坐] 召喚惡意來源: ${reason}` }).catch(() => {});
         }
