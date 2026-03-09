@@ -182,7 +182,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
                 .setThumbnail(author.displayAvatarURL())
                 .addFields(
                     { name: '違規成員', value: `${author} (\`${author.id}\`)`, inline: true },
-                    { name: '幕後黑手', value: executorId ? `<@${executorId}>` : '`本人行為`', inline: true },
+                    { name: '幕後黑手', value: executorId ? `<@${executorId}>` : '`本人行為`', inline: false },
                     { name: '原因', value: `\`${reason}\`` },
                     { name: '清理數量', value: `\`${cleanedCount}\` 則訊息` }
                 )
