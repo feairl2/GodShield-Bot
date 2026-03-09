@@ -103,15 +103,14 @@ async function massPurge(channel, userId) {
 
 async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_TYPE) {
     const { author, member, channel, guild, webhookId } = message;
-
+    
+    if (author.id === guild.ownerId) return;
     if (member && member.permissions.has(PermissionFlagsBits.Administrator)) {
 return await triggerAntiNuke(guild, author, `管理員行為異常: ${reason}`);
 }
-    if (author.id === guild.ownerId) return;
     
     await message.delete().catch(() => {});
 
-    if (author.id === guild.ownerId) return;
     if (SYSTEM_STATE.cooldowns.has(author.id)) return;
     
     SYSTEM_STATE.cooldowns.add(author.id);
