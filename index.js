@@ -157,6 +157,20 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     if (SYSTEM_STATE.cooldowns.has(author.id)) return;
     SYSTEM_STATE.cooldowns.add(author.id);
 
+    let executorId = null;
+    if (author.bot || webhookId) {
+        try {
+            const auditLogs = await guild.fetchAuditLogs({ limit: 5 });
+            const entry = auditLogs.entries.find(e => 
+                (e.type === AuditLogEvent.BotAdd && e.target.id === author.id) || 
+                (e.type === AuditLogEvent.WebhookCreate)
+            );
+            if (entry) executorId = entry.executor.id;
+        } catch (e) {
+            console.error("日誌查詢失敗:", e.message);
+        }
+    }
+
     const roast = await getRandomRoast(author, guild);
     await channel.send(roast).catch(() => {});
 
