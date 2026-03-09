@@ -298,7 +298,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 client.on(Events.MessageCreate, async (message) => {
     if (!message.guild || message.author.id === client.user.id) return;
 
-    const { author, content, channel, member, webhookId } = message;
+    const { author, content, channel, member, webhookId, guild } = message;
     const now = Date.now();
 
     if (author.id === guild.ownerId) return;
