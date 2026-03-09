@@ -119,7 +119,7 @@ return await triggerAntiNuke(guild, author, `管理員行為異常: ${reason}`);
     const cleaned = await massPurge(channel, author.id);
     const modLogChannel = guild.channels.cache.find(ch => ch.name === '⛔│modlog');
 
-    await channel.send(getRandomRoast()).catch(() => {});
+    await channel.send(getRandomRoast(author)).catch(() => {});
 
     const justiceEmbed = new EmbedBuilder()
         .setColor(CONFIG.THEME.COLOR_CRITICAL)
@@ -177,7 +177,7 @@ async function triggerAntiNuke(guild, executor, reason) {
         const nukeEmbed = new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('偵測到未經授權的高階權限異動，系統已啟動自動防禦機制進行攔截')
-            .setDescription(`## ${getRandomRoast()}`)
+            .setDescription(getRandomRoast(executor))
             .addFields(
                 { name: '受控對象', value: `${executor.tag} (\`${executor.id}\`)` },
                 { name: '惡意行為', value: `\`${reason}\`` },
