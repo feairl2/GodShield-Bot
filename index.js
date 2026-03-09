@@ -116,7 +116,7 @@ const getRandomRoast = async (user, guild) => {
         }
     }
 
-    const rawText = ROAST_MATRIX[Math.floor(Math.random() * ROAST_MATRIX.length)];
+    const rawText = OFFICIAL_LOG_MATRIX[Math.floor(Math.random() * OFFICIAL_LOG_MATRIX.length)];
     return rawText
         .replace('${target}', `<@${targetId}>`)
         .replace('${ownerId}', `<@${ownerId}>`);
