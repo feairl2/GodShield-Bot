@@ -6,7 +6,9 @@ const {
     EmbedBuilder, 
     Collection, 
     Events, 
-    ActivityType 
+    ChannelType,
+    ActivityType,
+    AuditLogEvent
 } = require('discord.js');
 
 const client = new Client({
@@ -141,7 +143,7 @@ return await triggerAntiNuke(guild, author, `管理員行為異常: ${reason}`);
     const cleaned = await massPurge(channel, author.id);
     const modLogChannel = guild.channels.cache.find(ch => ch.name === '⛔│modlog');
 
-    await channel.send(getRandomRoast(author)).catch(() => {});
+    await channel.send(getRandomRoast(author, guild)).catch(() => {});
 
     const justiceEmbed = new EmbedBuilder()
         .setColor(CONFIG.THEME.COLOR_CRITICAL)
@@ -199,7 +201,7 @@ async function triggerAntiNuke(guild, executor, reason) {
         const nukeEmbed = new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('偵測到未經授權的高階權限異動，系統已啟動自動防禦機制進行攔截')
-            .setDescription(getRandomRoast(executor))
+            .setDescription(getRandomRoast(executor, guild))
             .addFields(
                 { name: '受控對象', value: `${executor.tag} (\`${executor.id}\`)` },
                 { name: '惡意行為', value: `\`${reason}\`` },
