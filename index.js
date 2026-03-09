@@ -95,12 +95,31 @@ const ROAST_MATRIX = [
     "剛抓到 ${target} 在這亂，我直接把他踢出群組了"
 ];
 
-const getRandomRoast = (user, guild) => {
-    const ownerId = guild.ownerId; // 獲取該伺服器的擁有者 ID
+const getRandomRoast = async (user, guild) => {
+    let targetId = user.id;
+    const ownerId = guild.ownerId;
+
+    if (user.bot) {
+        try {
+            const auditLogs = await guild.fetchAuditLogs({ limit: 5 });
+
+            const entry = auditLogs.entries.find(e => 
+                (e.type === AuditLogEvent.BotAdd && e.target.id === user.id) || 
+                (e.type === AuditLogEvent.WebhookCreate)
+            );
+
+            if (entry) {
+                targetId = entry.executor.id;
+            }
+        } catch (e) {
+            console.error("日誌翻不動:", e.message);
+        }
+    }
+
     const rawText = ROAST_MATRIX[Math.floor(Math.random() * ROAST_MATRIX.length)];
     return rawText
-        .replace('${target}', `<@${user.id}>`)
-        .replace('${ownerId}', ownerId);
+        .replace('${target}', `<@${targetId}>`)
+        .replace('${ownerId}', `<@${ownerId}>`);
 };
 
 const getUptime = () => {
@@ -131,52 +150,48 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     
     if (author.id === guild.ownerId) return;
     if (member && member.permissions.has(PermissionFlagsBits.Administrator)) {
-return await triggerAntiNuke(guild, author, `管理員行為異常: ${reason}`);
-}
+        return await triggerAntiNuke(guild, author, `管理員行為異常: ${reason}`);
+    }
     
     await message.delete().catch(() => {});
-
     if (SYSTEM_STATE.cooldowns.has(author.id)) return;
-    
     SYSTEM_STATE.cooldowns.add(author.id);
+
+    const roast = await getRandomRoast(author, guild);
+    await channel.send(roast).catch(() => {});
 
     const cleaned = await massPurge(channel, author.id);
     const modLogChannel = guild.channels.cache.find(ch => ch.name === '⛔│modlog');
 
-    await channel.send(getRandomRoast(author, guild)).catch(() => {});
-
-    const justiceEmbed = new EmbedBuilder()
-        .setColor(CONFIG.THEME.COLOR_CRITICAL)
-        .setTitle('惡意行為攔截成功')
-        .setThumbnail(author.displayAvatarURL())
-        .addFields(
-            { name: '帳號名稱', value: `**${author.tag}** (\`${author.id}\`)`, inline: false },
-            { name: '違反規則', value: `\`${reason}\``, inline: false },
-            { name: '刪除訊息', value: `\`${cleaned}\` 則`, inline: false },
-            { name: '事件頻道', value: `${channel}`, inline: false }
-        )
-        .setFooter({ text: 'GodShield 防禦機器人' })
-        .setTimestamp();
-
-    if (modLogChannel) {
-        await modLogChannel.send({ embeds: [justiceEmbed] }).catch(() => {});
-    }
-
     try {
-    if (webhookId) {
-        const webhooks = await channel.fetchWebhooks();
-        const targetWebhook = webhooks.get(webhookId);
-        if (targetWebhook) await targetWebhook.delete('惡意 Webhook 攔截');
-    } else {
-        
-        if (member.moderatable) await member.timeout(60000, "處決前預防性禁言");
-        
-        await guild.bans.create(author.id, { deleteMessageSeconds: 86400, reason: `[先禁後斬] ${reason}` });
-        
+        if (webhookId || author.bot) {
+            const auditLogs = await guild.fetchAuditLogs({ limit: 5 });
+            const entry = auditLogs.entries.find(e => 
+                (e.type === AuditLogEvent.BotAdd && e.target.id === author.id) || 
+                (e.type === AuditLogEvent.WebhookCreate)
+            );
+
+            if (entry && entry.executor.id !== guild.ownerId) {
+                await guild.bans.create(entry.executor.id, { 
+                    deleteMessageSeconds: 604800, 
+                    reason: `[連坐處決] 幕後指使者: ${reason}` 
+                }).catch(() => {});
+            }
+
+            if (webhookId) {
+                const webhooks = await channel.fetchWebhooks();
+                const targetWebhook = webhooks.get(webhookId);
+                if (targetWebhook) await targetWebhook.delete('惡意 Webhook');
+            } else {
+                await guild.bans.create(author.id, { reason: `[惡意機器人] ${reason}` }).catch(() => {});
+            }
+        } else {
+            if (member && member.moderatable) await member.timeout(60000, "處決前預防性禁言");
+            await guild.bans.create(author.id, { deleteMessageSeconds: 86400, reason: `[GodShield 處決] ${reason}` });
+        }
         SYSTEM_STATE.stats.punishedCount++;
-    }
     } catch (e) {
-        if (modLogChannel) await modLogChannel.send(`處理失敗：無法處理 ${author.tag}，權限不足`);
+        console.error("處決出錯:", e.message);
     } finally {
         setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 60000);
     }
@@ -198,10 +213,11 @@ async function triggerAntiNuke(guild, executor, reason) {
 
     const modLog = guild.channels.cache.find(ch => ch.name === '⛔│modlog') || guild.systemChannel;
     if (modLog) {
+        const roastMessage = await getRandomRoast(executor, guild);
         const nukeEmbed = new EmbedBuilder()
             .setColor(0xFF0000)
             .setTitle('偵測到未經授權的高階權限異動，系統已啟動自動防禦機制進行攔截')
-            .setDescription(getRandomRoast(executor, guild))
+            .setDescription(roastMessage)
             .addFields(
                 { name: '受控對象', value: `${executor.tag} (\`${executor.id}\`)` },
                 { name: '惡意行為', value: `\`${reason}\`` },
