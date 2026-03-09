@@ -174,12 +174,13 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
         if (modLogChannel) {
             const logEmbed = new EmbedBuilder()
                 .setColor(CONFIG.THEME.COLOR_CRITICAL)
-                .setAuthor({ name: 'GodShield 威脅攔截報告', iconURL: client.user.displayAvatarURL() })
+                .setAuthor({ name: 'GodShield 已成功攔截一次威脅', iconURL: client.user.displayAvatarURL() })
                 .setThumbnail(author.displayAvatarURL())
                 .addFields(
                     { name: '違規成員', value: `${author} (\`${author.id}\`)`, inline: true },
-                    { name: '原因', value: `\`${reason}\`` },
-                    { name: '清理數量', value: `\`${cleanedCount}\` 則訊息` }
+                    { name: '違反規則', value: `\`${reason}\`` },
+                    { name: '刪除訊息', value: `\`${cleanedCount}\` 則訊息` },
+                    { name: '事發頻道', value: `${channel} (\`#${channel.name}\`)`, inline: true }
                 )
                 .setTimestamp();
             await modLogChannel.send({ embeds: [logEmbed] }).catch(() => {});
