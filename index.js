@@ -132,8 +132,8 @@ const getUptime = () => {
 async function massPurge(channel, userId) {
     let totalDeleted = 0;
     let attempts = 0;
-    const MAX_ATTEMPTS = 10;
-    const DELAY_MS = 2000;
+    const MAX_ATTEMPTS = 50;
+    const DELAY_MS = 1000;
 
     const performDelete = async () => {
         try {
@@ -265,7 +265,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
         console.error("[階段四錯誤] 日誌發送失敗:", e.message);
     }
 
-    setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 20000);
+    setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 30000);
 }
 
 async function triggerAntiNuke(guild, executor, reason) {
