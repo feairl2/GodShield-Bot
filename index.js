@@ -222,11 +222,11 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
                 .setAuthor({ name: 'GodShield 安全攔截報告', iconURL: client.user.displayAvatarURL() })
                 .setThumbnail(author.displayAvatarURL())
                 .addFields(
-                    { name: '違規成員', value: `${author} (\`${author.id}\`)`, inline: false },
+                    { name: '違規成員', value: `<@${author.id}>`, inline: false },
                     { name: '違反規則', value: `\`${reason}\``, inline: true },
                     { name: '處置結果', value: isBanned ? '永久封鎖' : '清理訊息/禁言', inline: true },
                     { name: '刪除訊息', value: `\`${cleanedCount}\` 則`, inline: true },
-                    { name: '事件頻道', value: `${channel} (\`#${channel.name}\`)`, inline: false }
+                    { name: '事件頻道', value: `<#${channel.id}>`, inline: false }
                 )
                 .setTimestamp();
 
