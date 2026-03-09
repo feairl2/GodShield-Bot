@@ -297,10 +297,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 client.on(Events.MessageCreate, async (message) => {
     if (!message.guild || message.author.id === client.user.id) return;
-    if (author.id === guild.ownerId) return;
 
     const { author, content, channel, member, webhookId } = message;
     const now = Date.now();
+
+    if (author.id === guild.ownerId) return;
 
     if (content.length > CONFIG.SPAM.MAX_CHARS) {
         return executeJustice(message, `大量訊息 (超過 ${CONFIG.SPAM.MAX_CHARS} 字)`, 'BAN');
