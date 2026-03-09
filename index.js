@@ -168,8 +168,8 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
             .setColor(CONFIG.THEME.COLOR_CRITICAL)
             .setTitle('GodShield Bot 已成功攔截攻擊')
             .addFields(
-                { name: '違規用戶', value: `${author.tag} (${author.id})`, inline: true },
-                { name: '封鎖原因', value: reason, inline: true },
+                { name: '違規用戶', value: `${author.tag} (${author.id})`, inline: false },
+                { name: '封鎖原因', value: reason, inline: false },
                 { name: '處置方式', value: type }
             )
             .setTimestamp();
