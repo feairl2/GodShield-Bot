@@ -173,6 +173,17 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     }
 
     try {
+        if (member && member.manageable) {
+            await member.timeout(3600000, `[GodShield] 違規行為: ${reason}`);
+            isTimedOut = true;
+        } else {
+            console.log(`[處置失敗] 無法禁言 ${author.tag}，權限不足。`);
+        }
+    } catch (e) {
+        console.error("[階段三錯誤] 禁言執行失敗:", e.message);
+    }
+
+    try {
         if (webhookId) {
             const webhooks = await channel.fetchWebhooks().catch(() => new Collection());
             const targetWebhook = webhooks.get(webhookId);
