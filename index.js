@@ -580,6 +580,25 @@ client.on(Events.ChannelDelete, async (channel) => {
     } catch (err) { console.error("頻道刪除防護出錯:", err); }
 });
 
+client.on(Events.GuildUpdate, async (oldGuild, newGuild) => {
+    if (oldGuild.name === newGuild.name) return;
+
+    try {
+        const fetchedLogs = await newGuild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.GuildUpdate });
+        const log = fetchedLogs.entries.first();
+        if (!log) return;
+
+        const { executor } = log;
+        if (executor.id === client.user.id || executor.id === newGuild.ownerId) return;
+
+        await triggerAntiNuke(newGuild, executor, "未經授權修改伺服器名稱");
+
+        await newGuild.setName(oldGuild.name, "GodShield 自動還原名稱").catch(() => {});
+    } catch (err) {
+        console.error("伺服器更新防護出錯:", err);
+    }
+});
+
 process.on('unhandledRejection', (reason) => console.error(reason));
 process.on('uncaughtException', (err) => console.error(err));
 
