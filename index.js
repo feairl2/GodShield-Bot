@@ -111,47 +111,49 @@ async function massPurge(channel, userId) {
     SYSTEM_STATE.purgingChannels.add(channel.id);
     
     let totalDeleted = 0;
-    let attempts = 0;
-    const MAX_ATTEMPTS = 150;
-    const DELAY_MS = 200;
+    let hasMore = true;
+    let failCount = 0;
 
-    const performDelete = async () => {
+    console.log(`開始清理頻道 ${channel.name} 的惡意訊息...`);
+
+    while (hasMore && failCount < 3) {
         try {
             const fetched = await channel.messages.fetch({ limit: 100 }).catch(() => null);
-            if (!fetched) return 0;
+            if (!fetched || fetched.size === 0) {
+                hasMore = false;
+                break;
+            }
 
             const targets = fetched.filter(m => 
                 m.author.id === userId || 
                 m.webhookId === userId || 
                 (m.author.bot && m.content.includes('@everyone'))
             );
-            
+
             if (targets.size > 0) {
                 const deleted = await channel.bulkDelete(targets, true);
                 totalDeleted += deleted.size;
                 SYSTEM_STATE.stats.cleanedCount += deleted.size;
-                console.log(`[清理中] 頻道: ${channel.name}，已刪除: ${totalDeleted}`);
-                return deleted.size;
+
+                if (deleted.size < targets.size) {
+                    hasMore = false;
+                }
+            } else {
+                hasMore = false;
             }
         } catch (err) {
-            if (err.status === 429) console.error("!!! 撞到 Discord 速率限制了 !!!");
+            if (err.status === 429) {
+                console.error("限速中：等待 2 秒後繼續 !!!");
+                await new Promise(res => setTimeout(res, 2000)); // 撞牆了就休息 2 秒
+                failCount++;
+            } else {
+                hasMore = false;
+            }
         }
-        return 0;
-    };
+    }
 
-    const intervalId = setInterval(async () => {
-        attempts++;
-        await performDelete();
-
-        if (attempts >= MAX_ATTEMPTS) {
-            clearInterval(intervalId);
-            SYSTEM_STATE.purgingChannels.delete(channel.id);
-            console.log(`[清理完成] 總計掃描 ${MAX_ATTEMPTS} 次，清除 ${totalDeleted} 則。`);
-        }
-    }, DELAY_MS);
-
-    await performDelete();
-
+    SYSTEM_STATE.purgingChannels.delete(channel.id);
+    console.log(`[肅清完成] 總計清除 ${totalDeleted} 則訊息。`);
     return totalDeleted;
 }
 
