@@ -239,17 +239,36 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     const { author, member, channel, guild, webhookId } = message;
     let targetUserId = author.id;
 
-    if (author.bot || webhookId) {
+    if (webhookId) {
     try {
-        const logs = await guild.fetchAuditLogs({ limit: 5 });
-        const entry = logs.entries.find(e =>
-            e.target?.id === author.id || 
-            e.extra?.channel?.id === channel.id
-        );
 
-        if (entry) {
-            targetUserId = entry.executor.id;
+        const hooks = await channel.fetchWebhooks().catch(()=>null);
+
+        if (hooks) {
+            const hook = hooks.get(webhookId);
+
+            if (hook && hook.owner) {
+                targetUserId = hook.owner.id;
+            }
         }
+
+        if (!targetUserId) {
+
+            const logs = await guild.fetchAuditLogs({
+                limit: 5,
+                type: AuditLogEvent.WebhookCreate
+            });
+
+            const entry = logs.entries.find(e =>
+                e.extra?.channel?.id === channel.id
+            );
+
+            if (entry) {
+                targetUserId = entry.executor.id;
+            }
+
+        }
+
     } catch {}
 }
 
@@ -346,6 +365,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
                 .setAuthor({ name: 'GodShield 安全攔截報告', iconURL: client.user.displayAvatarURL() })
                 .setThumbnail(author.displayAvatarURL())
                 .addFields(
+                    { name: '訊息來源', value: `<@${author.id}>`, inline: false },
                     { name: '違規成員', value: `<@${targetUserId}>`, inline: false },
                     { name: '違反規則', value: `\`${reason}\``, inline: false },
                     { name: '處置結果', value: isBanned ? '永久封鎖' : '清理訊息/禁言', inline: false },
