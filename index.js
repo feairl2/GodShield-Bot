@@ -51,6 +51,7 @@ const SYSTEM_STATE = {
     roleTracker: new Collection(),
     channelTracker: new Collection(),
     punishedCache: new Set(),
+    purgingChannels: new Set(),
     stats: {
         punishedCount: 0,
         cleanedCount: 0,
@@ -106,6 +107,9 @@ const getUptime = () => {
 };
 
 async function massPurge(channel, userId) {
+    if (SYSTEM_STATE.purgingChannels.has(channel.id)) return 0;
+    SYSTEM_STATE.purgingChannels.add(channel.id);
+    
     let totalDeleted = 0;
     let attempts = 0;
     const MAX_ATTEMPTS = 100;
@@ -113,20 +117,24 @@ async function massPurge(channel, userId) {
 
     const performDelete = async () => {
         try {
-            const fetched = await channel.messages.fetch({ limit: 100 });
-            const userMessages = fetched.filter(m => m.author.id === userId || m.webhookId === userId);
+            const fetched = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+            if (!fetched) return 0;
+
+            const targets = fetched.filter(m => 
+                m.author.id === userId || 
+                m.webhookId === userId || 
+                (m.author.bot && m.content.includes('@everyone'))
+            );
             
-            if (userMessages.size > 0) {
-                const deleted = await channel.bulkDelete(userMessages, true);
+            if (targets.size > 0) {
+                const deleted = await channel.bulkDelete(targets, true);
                 totalDeleted += deleted.size;
                 SYSTEM_STATE.stats.cleanedCount += deleted.size;
-                console.log(`[第 ${attempts + 1} 次清理] 刪除了 ${deleted.size} 則訊息`);
+                console.log(`[清理中] 頻道: ${channel.name}，已刪除: ${totalDeleted}`);
                 return deleted.size;
             }
         } catch (err) {
-            if (!err.message.includes("14 days old")) {
-                console.error(`[清理異常] ${err.message}`);
-            }
+            if (err.status === 429) console.error("!!! 撞到 Discord 速率限制了 !!!");
         }
         return 0;
     };
@@ -137,6 +145,7 @@ async function massPurge(channel, userId) {
 
         if (attempts >= MAX_ATTEMPTS) {
             clearInterval(intervalId);
+            SYSTEM_STATE.purgingChannels.delete(channel.id);
             console.log(`[清理完成] 總計掃描 ${MAX_ATTEMPTS} 次，清除 ${totalDeleted} 則。`);
         }
     }, DELAY_MS);
