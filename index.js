@@ -101,14 +101,19 @@ async function massPurge(channel, userId) {
     let totalDeleted = 0;
     let lastMessageId = null;
     let page = 0;
-    let keepScanning = true;
 
     const BULK_DELETE_LIMIT_MS = 14 * 24 * 60 * 60 * 1000;
     const SAFE_BULK_DELETE_MS = BULK_DELETE_LIMIT_MS - 60 * 1000;
 
     console.log(`[GodShield] 開始清理頻道: ${channel.name} | 目標: ${userId}`);
 
-    while (keepScanning) {
+    for (let round = 0; round < 10; round++) {
+
+console.log(`[GodShield] 清理輪次 ${round + 1}/10`);
+
+    lastMessageId = null;
+    page = 0;
+        
         try {
             const fetchOptions = { limit: 100 };
             if (lastMessageId) fetchOptions.before = lastMessageId;
@@ -209,6 +214,7 @@ async function massPurge(channel, userId) {
             console.log(`[GodShield] ${channel.name} 清理失敗: ${err.message}`);
             break;
         }
+        await new Promise(res => setTimeout(res, 1000));
     }
 
     SYSTEM_STATE.purgingChannels.delete(channel.id);
