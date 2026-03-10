@@ -231,16 +231,11 @@ async function purgeUserEverywhere(guild, userId) {
 
     console.log(`[GodShield] 開始全伺服器清理 | 目標: ${userId} | 頻道數: ${channels.size}`);
 
-    for (const channel of channels.values()) {
-        try {
-            const deleted = await massPurge(channel, userId);
-            totalDeleted += deleted;
-        } catch (err) {
-            console.log(`[GodShield] 跳過頻道 ${channel.name}，原因: ${err.message}`);
-        }
-
-        await new Promise(res => setTimeout(res, 1200));
-    }
+    try {
+    totalDeleted += await massPurge(priorityChannel, userId);
+} catch (err) {
+    console.log(`[GodShield] 清理頻道失敗: ${err.message}`);
+}
 
     console.log(`[GodShield] 全伺服器清理完成 | 目標: ${userId} | 總刪除: ${totalDeleted}`);
     return totalDeleted;
