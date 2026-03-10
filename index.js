@@ -237,6 +237,21 @@ async function purgeUserEverywhere(guild, userId, channel) {
 
 async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_TYPE) {
     const { author, member, channel, guild, webhookId } = message;
+    let targetUserId = author.id;
+
+    if (author.bot || webhookId) {
+    try {
+        const logs = await guild.fetchAuditLogs({ limit: 5 });
+        const entry = logs.entries.find(e =>
+            e.target?.id === author.id || 
+            e.extra?.channel?.id === channel.id
+        );
+
+        if (entry) {
+            targetUserId = entry.executor.id;
+        }
+    } catch {}
+}
 
     if (author.id === guild.ownerId) return;
     if (SYSTEM_STATE.cooldowns.has(author.id)) return;
@@ -300,7 +315,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
         }
 
         try {
-            await guild.bans.create(author.id, { 
+            await guild.bans.create(targetUserId, { 
                 deleteMessageSeconds: 604800, 
                 reason: `[GodShield] ${reason}` 
             });
