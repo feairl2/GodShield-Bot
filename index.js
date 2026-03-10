@@ -129,7 +129,8 @@ async function massPurge(channel, userId) {
 
     return (
         msg.author?.id === userId ||
-        msg.webhookId === userId
+        msg.webhookId ||
+        msg.author?.bot
     );
 
 });
@@ -248,7 +249,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
 } catch {}
 
     try {
-    cleanedCount = await purgeUserEverywhere(guild, author.id);
+    cleanedCount = await purgeUserEverywhere(guild, author.id, channel);
 } catch (e) {
     console.error("[階段二錯誤] 全伺服器清理失敗:", e.message);
 }
@@ -256,7 +257,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     try {
         if (member && member.manageable) {
             await member.timeout(3600000, `[GodShield] 違規行為: ${reason}`);
-            let isTimedOut = false;
+    let isTimedOut = false;
         } else {
             console.log(`[處置失敗] 無法禁言 ${author.tag}，權限不足。`);
         }
