@@ -112,8 +112,8 @@ async function massPurge(channel, userId) {
     
     let totalDeleted = 0;
     let attempts = 0;
-    const MAX_ATTEMPTS = 100;
-    const DELAY_MS = 300;
+    const MAX_ATTEMPTS = 150;
+    const DELAY_MS = 200;
 
     const performDelete = async () => {
         try {
