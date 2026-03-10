@@ -88,7 +88,7 @@ async function deleteOldMessagesIndividually(channel, messages) {
 
 async function massPurge(channel, userId) {
     if (!channel) return 0;
-    if (!channel.isTextBased || !channel.isTextBased()) return 0;
+    if (!channel || !channel.isTextBased()) return 0;
     if (!channel.messages || typeof channel.messages.fetch !== 'function') return 0;
 
     if (SYSTEM_STATE.purgingChannels.has(channel.id)) {
@@ -126,13 +126,11 @@ async function massPurge(channel, userId) {
             const now = Date.now();
 
             const targetMessages = fetched.filter(msg => {
-
     return (
         msg.author?.id === userId ||
         msg.webhookId ||
         msg.author?.bot
     );
-
 });
 
             if (targetMessages.size === 0) {
@@ -245,7 +243,9 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     let executorId = null;
 
     try {
-    await message.delete().catch(() => {});
+    await message.delete().catch(err => {
+    console.error('[刪除觸發訊息失敗]', err.message);
+});
 } catch {}
 
     try {
