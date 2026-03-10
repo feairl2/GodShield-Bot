@@ -107,7 +107,7 @@ async function massPurge(channel, userId) {
 
     console.log(`[GodShield] 開始清理頻道: ${channel.name} | 目標: ${userId}`);
 
-    for (let round = 0; round < 10; round++) {
+    for (let round = 0; round < 50; round++) {
 
 console.log(`[GodShield] 清理輪次 ${round + 1}/10`);
 
@@ -214,7 +214,7 @@ console.log(`[GodShield] 清理輪次 ${round + 1}/10`);
             console.log(`[GodShield] ${channel.name} 清理失敗: ${err.message}`);
             break;
         }
-        await new Promise(res => setTimeout(res, 2000));
+        await new Promise(res => setTimeout(res, 500));
     }
 
     SYSTEM_STATE.purgingChannels.delete(channel.id);
