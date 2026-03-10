@@ -64,41 +64,6 @@ const ROLE_PROTECT_CONFIG = {
     WINDOW_MS: 10000,
 };
 
-const OFFICIAL_LOG_MATRIX = [
-    "報告 ${ownerId}：偵測到用戶 ${target} 蓄意破壞秩序，屬下已依法執行永久封鎖並強制踢出",
-    "報告 ${ownerId}：用戶 ${target} 觸發安全防禦，系統已完成自動肅清，該帳號已遭封鎖並移出伺服器",
-    "報告 ${ownerId}：針對用戶 ${target} 的惡意活動，本系統已吊銷其存取權限，現已將其封鎖並踢出完畢",
-    "報告 ${ownerId}：報告管理層，用戶 ${target} 因違規情節嚴重，系統已即刻對其施以封鎖並強制處決踢出",
-    "報告 ${ownerId}：已排除用戶 ${target} 之干擾，為確保環境純淨，屬下已同步完成封鎖與踢出程序"
-];
-
-const getRandomRoast = async (user, guild) => {
-    let targetId = user.id;
-    const ownerId = guild.ownerId;
-
-    if (user.bot) {
-        try {
-            const auditLogs = await guild.fetchAuditLogs({ limit: 5 });
-
-            const entry = auditLogs.entries.find(e => 
-                (e.type === AuditLogEvent.BotAdd && e.target.id === user.id) || 
-                (e.type === AuditLogEvent.WebhookCreate)
-            );
-
-            if (entry) {
-                targetId = entry.executor.id;
-            }
-        } catch (e) {
-            console.error("日誌翻不動:", e.message);
-        }
-    }
-
-    const rawText = OFFICIAL_LOG_MATRIX[Math.floor(Math.random() * OFFICIAL_LOG_MATRIX.length)];
-    return rawText
-        .replace('${target}', `<@${targetId}>`)
-        .replace('${ownerId}', `<@${ownerId}>`);
-};
-
 const getUptime = () => {
     const totalSeconds = (Date.now() - SYSTEM_STATE.stats.startTime) / 1000;
     const hours = Math.floor(totalSeconds / 3600);
@@ -290,12 +255,8 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     let executorId = null;
 
     try {
-        const roast = await getRandomRoast(author, guild);
-        await channel.send(roast).catch(() => {});
-        await message.delete().catch(() => {});
-    } catch (e) {
-        console.error("[階段一錯誤]", e.message);
-    }
+    await message.delete().catch(() => {});
+} catch {}
 
     try {
     cleanedCount = await purgeUserEverywhere(guild, author.id);
@@ -433,21 +394,23 @@ async function triggerAntiNuke(guild, executor, reason) {
         }
     }
 
-    const modLog = guild.channels.cache.find(ch => ch.name === '⛔│modlog') || guild.systemChannel;
-    if (modLog) {
-        const roastMessage = await getRandomRoast(executor, guild);
-        const nukeEmbed = new EmbedBuilder()
-            .setColor(0xFF0000)
-            .setTitle('偵測到未經授權的高階權限異動，系統已啟動自動防禦機制進行攔截')
-            .setDescription(roastMessage)
-            .addFields(
-                { name: '受控對象', value: `${executor.tag} (\`${executor.id}\`)` },
-                { name: '惡意行為', value: `\`${reason}\`` },
-                { name: '系統處置', value: `已剝離所有身分組並封鎖行動` }
-            )
-            .setTimestamp();
-        await modLog.send({ embeds: [nukeEmbed] }).catch(() => {});
-    }
+    const modLog = guild.channels.cache.find(ch => ch.name === '⛔│modlog');
+
+if (modLog) {
+
+    const nukeEmbed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('GodShield Anti-Nuke 攔截報告')
+        .addFields(
+            { name: '違規對象', value: `${executor.tag} (\`${executor.id}\`)` },
+            { name: '偵測行為', value: `\`${reason}\`` },
+            { name: '系統處置', value: '已解除權限並永久封鎖' }
+        )
+        .setTimestamp();
+
+    await modLog.send({ embeds: [nukeEmbed] }).catch(()=>{});
+}
+    
     try {
     await guild.bans.create(executor.id, { 
         deleteMessageSeconds: 604800, 
