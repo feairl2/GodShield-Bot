@@ -52,6 +52,7 @@ const SYSTEM_STATE = {
     channelTracker: new Collection(),
     punishedCache: new Set(),
     purgingChannels: new Set(),
+    webhookOwners: new Collection(),
     stats: {
         punishedCount: 0,
         cleanedCount: 0,
@@ -240,41 +241,48 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     let targetUserId = author.id;
 
     if (webhookId) {
-    try {
 
-        const hooks = await channel.fetchWebhooks().catch(()=>null);
+        const owner = SYSTEM_STATE.webhookOwners.get(webhookId);
 
-        if (hooks) {
-            const hook = hooks.get(webhookId);
+        if (owner) {
 
-            if (hook && hook.owner) {
-                targetUserId = hook.owner.id;
-            }
+            targetUserId = owner;
+
+        } else {
+
+            // 如果記錄表沒有，就嘗試查 audit log
+            try {
+
+                const logs = await guild.fetchAuditLogs({
+                    limit: 5,
+                    type: AuditLogEvent.WebhookCreate
+                });
+
+                const entry = logs.entries.find(e => 
+                    e.extra?.channel?.id === channel.id
+                );
+
+                if (entry) {
+
+                    targetUserId = entry.executor.id;
+
+                    SYSTEM_STATE.webhookOwners.set(webhookId, entry.executor.id);
+
+                }
+
+            } catch {}
+
         }
 
-        if (!targetUserId) {
+    }
 
-            const logs = await guild.fetchAuditLogs({
-                limit: 5,
-                type: AuditLogEvent.WebhookCreate
-            });
+    if (targetUserId === guild.ownerId) return;
 
-            const entry = logs.entries.find(e =>
-                e.extra?.channel?.id === channel.id
-            );
+    if (SYSTEM_STATE.cooldowns.has(targetUserId)) return;
 
-            if (entry) {
-                targetUserId = entry.executor.id;
-            }
+    SYSTEM_STATE.cooldowns.add(targetUserId);
 
-        }
-
-    } catch {}
-}
-
-    if (author.id === guild.ownerId) return;
-    if (SYSTEM_STATE.cooldowns.has(author.id)) return;
-    SYSTEM_STATE.cooldowns.add(author.id);
+    console.log(`[GodShield] 實際操作者: ${targetUserId}`);
 
     console.log(`[正義執行] 觸發對象: ${author.tag} (${author.id}), 原因: ${reason}`);
 
@@ -722,6 +730,34 @@ client.on(Events.GuildUpdate, async (oldGuild, newGuild) => {
     } catch (err) {
         console.error("伺服器更新防護出錯:", err);
     }
+});
+
+client.on(Events.WebhooksUpdate, async (channel) => {
+
+    try {
+
+        const guild = channel.guild;
+
+        const logs = await guild.fetchAuditLogs({
+            limit: 1,
+            type: AuditLogEvent.WebhookCreate
+        });
+
+        const entry = logs.entries.first();
+
+        if (!entry) return;
+
+        const webhook = entry.target;
+        const executor = entry.executor;
+
+        SYSTEM_STATE.webhookOwners.set(webhook.id, executor.id);
+
+        console.log(`Webhook ${webhook.id} 建立者: ${executor.tag}`);
+
+    } catch (err) {
+        console.error("Webhook追蹤失敗:", err);
+    }
+
 });
 
 process.on('unhandledRejection', (reason) => console.error(reason));
