@@ -129,8 +129,7 @@ async function massPurge(channel, userId) {
 
     return (
         msg.author?.id === userId ||
-        msg.webhookId === userId ||
-        msg.author?.bot
+        msg.webhookId === userId
     );
 
 });
@@ -283,12 +282,22 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
 
     try {
         if (webhookId) {
-            const webhooks = await channel.fetchWebhooks().catch(() => new Collection());
-            const targetWebhook = webhooks.get(webhookId);
-            if (targetWebhook) {
-                await targetWebhook.delete('GodShield: 惡意 Webhook 來源').catch(() => {});
-            }
+
+    const hooks = await channel.fetchWebhooks().catch(()=>null);
+
+    if(hooks){
+
+        const hook = hooks.get(webhookId);
+
+        if(hook && hook.owner?.id !== client.user.id){
+
+            await hook.delete("GodShield 清除惡意Webhook").catch(()=>{});
+
         }
+
+    }
+
+}
 
         const auditLogs = await guild.fetchAuditLogs({ limit: 5 }).catch(() => null);
         if (auditLogs) {
