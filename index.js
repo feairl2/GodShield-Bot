@@ -144,7 +144,7 @@ async function massPurge(channel, userId) {
                     break;
                 }
 
-                await new Promise(res => setTimeout(res, 800));
+                await new Promise(res => setTimeout(res, 100));
                 continue;
             }
 
@@ -256,7 +256,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     try {
         if (member && member.manageable) {
             await member.timeout(3600000, `[GodShield] 違規行為: ${reason}`);
-            isTimedOut = true;
+            let isTimedOut = false;
         } else {
             console.log(`[處置失敗] 無法禁言 ${author.tag}，權限不足。`);
         }
@@ -373,15 +373,6 @@ async function triggerAntiNuke(guild, executor, reason) {
         console.error("無法追蹤機器人引進者");
     }
 
-    try {
-        await guild.bans.create(executor.id, { 
-            deleteMessageSeconds: 604800, 
-            reason: `[GodShield Anti-Nuke] 惡意機器人行為: ${reason}` 
-        });
-        SYSTEM_STATE.stats.punishedCount++;
-    } catch (e) {
-        console.error(`[封鎖失敗] 無法封鎖機器人 ${executor.id}: ${e.message}`);
-    }
     if (inviterId && inviterId !== guild.ownerId) {
         try {
             await guild.bans.create(inviterId, { 
