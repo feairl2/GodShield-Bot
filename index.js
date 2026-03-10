@@ -80,7 +80,7 @@ async function deleteOldMessagesIndividually(channel, messages) {
             deletedCount++;
         } catch {}
 
-        await new Promise(res => setTimeout(res, 350));
+        await new Promise(res => setTimeout(res, 80));
     }
 
     return deletedCount;
@@ -195,7 +195,7 @@ async function massPurge(channel, userId) {
                 break;
             }
 
-            await new Promise(res => setTimeout(res, 1000));
+            await new Promise(res => setTimeout(res, 100));
         } catch (err) {
             if (err.status === 429) {
                 const retryAfter = err.rawError?.retry_after
@@ -218,26 +218,15 @@ async function massPurge(channel, userId) {
     return totalDeleted;
 }
 
-async function purgeUserEverywhere(guild, userId) {
+async function purgeUserEverywhere(guild, userId, channel) {
     let totalDeleted = 0;
-
-    const channels = guild.channels.cache.filter(ch => {
-        if (!ch) return false;
-        if (!ch.isTextBased || !ch.isTextBased()) return false;
-        if (!ch.viewable) return false;
-        if (!ch.messages || typeof ch.messages.fetch !== 'function') return false;
-        return true;
-    });
-
-    console.log(`[GodShield] 開始全伺服器清理 | 目標: ${userId} | 頻道數: ${channels.size}`);
-
     try {
-    totalDeleted += await massPurge(priorityChannel, userId);
-} catch (err) {
-    console.log(`[GodShield] 清理頻道失敗: ${err.message}`);
-}
+        totalDeleted += await massPurge(channel, userId);
+    } catch (err) {
 
-    console.log(`[GodShield] 全伺服器清理完成 | 目標: ${userId} | 總刪除: ${totalDeleted}`);
+        console.log(`[GodShield] 清理頻道失敗: ${err.message}`);
+
+    }
     return totalDeleted;
 }
 
