@@ -344,7 +344,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
             const logEmbed = new EmbedBuilder()
                 .setColor(isBanned ? CONFIG.THEME.COLOR_CRITICAL : 0xFFAA00)
                 .setAuthor({ name: 'GodShield 安全攔截報告', iconURL: client.user.displayAvatarURL() })
-                .setThumbnail(author.displayAvatarURL())
+                .setThumbnail((author.displayAvatarURL && author.displayAvatarURL()) || client.user.displayAvatarURL())
                 .addFields(
                     { name: '違規成員', value: `<@${targetUserId}>`, inline: false },
                     { name: '違反規則', value: `\`${reason}\``, inline: false },
