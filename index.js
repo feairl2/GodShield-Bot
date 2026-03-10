@@ -346,7 +346,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
                 .setAuthor({ name: 'GodShield 安全攔截報告', iconURL: client.user.displayAvatarURL() })
                 .setThumbnail(author.displayAvatarURL())
                 .addFields(
-                    { name: '違規成員', value: `<@${author.id}>`, inline: false },
+                    { name: '違規成員', value: `<@${targetUserId}>`, inline: false },
                     { name: '違反規則', value: `\`${reason}\``, inline: false },
                     { name: '處置結果', value: isBanned ? '永久封鎖' : '清理訊息/禁言', inline: false },
                     { name: '刪除訊息', value: `\`${cleanedCount}\` 則`, inline: false },
