@@ -107,81 +107,120 @@ const getUptime = () => {
 };
 
 async function massPurge(channel, userId) {
+
+    if (!channel || !channel.isTextBased()) return 0;
+
     if (SYSTEM_STATE.purgingChannels.has(channel.id)) return 0;
     SYSTEM_STATE.purgingChannels.add(channel.id);
-    
+
     let totalDeleted = 0;
     let lastMessageId = null;
-    let hasMore = true;
-    let consecutiveFailures = 0;
+    let finished = false;
 
-    console.log(`[🛡️ 肅清啟動] 頻道: ${channel.name} | 目標: ${userId}`);
+    const TWO_WEEKS = 1209600000;
 
-    while (hasMore && consecutiveFailures < 3) {
+    console.log(`[GodShield] 開始清理頻道 ${channel.name} 目標 ${userId}`);
+
+    while (!finished) {
+
         try {
+
             const options = { limit: 100 };
             if (lastMessageId) options.before = lastMessageId;
 
             const fetched = await channel.messages.fetch(options);
-            
-            if (fetched.size === 0) {
-                hasMore = false;
-                break;
-            }
+
+            if (fetched.size === 0) break;
 
             lastMessageId = fetched.last().id;
 
             const now = Date.now();
-            const TWO_WEEKS_MS = 1209600000 - 60000; // 扣掉 1 分鐘緩衝，保證安全
 
             const targets = fetched.filter(m => {
-                const isTarget = (m.author.id === userId || m.webhookId === userId || (m.author.bot && m.content.includes('@everyone')));
-                const isRecent = (now - m.createdTimestamp) < TWO_WEEKS_MS;
+
+                const isTarget =
+                    m.author?.id === userId ||
+                    m.webhookId === userId;
+
+                const isRecent =
+                    (now - m.createdTimestamp) < TWO_WEEKS;
+
                 return isTarget && isRecent;
+
             });
 
             if (targets.size > 0) {
-                // Discord.js 的 bulkDelete 會自動處理 100 則內的集合
-                const deleted = await channel.bulkDelete(targets, true).catch(err => {
-                    console.error(`[⚠️ 批量刪除部分失敗] 可能是包含老訊息: ${err.message}`);
-                    return new Collection(); 
-                });
 
-                totalDeleted += deleted.size;
-                SYSTEM_STATE.stats.cleanedCount += deleted.size;
-                consecutiveFailures = 0;
+                try {
 
-                console.log(`[🧹 進度] 已刪除: ${deleted.size} 則 | 累計: ${totalDeleted}`);
+                    const deleted = await channel.bulkDelete(targets, true);
 
-                if (deleted.size < targets.size) {
-                    console.log(`[🛑 觸牆] 發現 14 天前的老訊息，bulkDelete 無法處理，停止掃描。`);
-                    hasMore = false;
+                    totalDeleted += deleted.size;
+                    SYSTEM_STATE.stats.cleanedCount += deleted.size;
+
+                    console.log(`[GodShield] 已刪 ${deleted.size} | 總計 ${totalDeleted}`);
+
+                } catch (err) {
+
+                    console.log(`[GodShield] bulkDelete失敗 嘗試單刪`);
+
+                    for (const msg of targets.values()) {
+
+                        try {
+
+                            await msg.delete();
+                            totalDeleted++;
+
+                        } catch {}
+
+                        await new Promise(r => setTimeout(r, 120));
+
+                    }
+
                 }
-            } else {
-                const hasOldMessages = fetched.some(m => (now - m.createdTimestamp) >= TWO_WEEKS_MS);
-                if (hasOldMessages) {
-                    console.log(`[ℹ️ 掃描完畢] 已到達 14 天前訊息區，無更多可刪目標。`);
-                    hasMore = false;
-                }
+
             }
 
-            await new Promise(res => setTimeout(res, 250));
+            const reachedOld = fetched.some(m =>
+                (now - m.createdTimestamp) >= TWO_WEEKS
+            );
+
+            if (reachedOld) {
+
+                console.log(`[GodShield] 到達14天限制 停止掃描`);
+                finished = true;
+
+            }
+
+            await new Promise(r => setTimeout(r, 1000));
 
         } catch (err) {
+
             if (err.status === 429) {
-                const retryAfter = err.rawError?.retry_after ? err.rawError.retry_after * 1000 : 5000;
-                console.error(`[🔥 429 限速] 觸發 Discord 防禦，暫停 ${retryAfter}ms...`);
-                await new Promise(res => setTimeout(res, retryAfter));
-                consecutiveFailures++;
+
+                const wait = err.rawError?.retry_after
+                    ? err.rawError.retry_after * 1000
+                    : 5000;
+
+                console.log(`[GodShield] RateLimit 暫停 ${wait}ms`);
+
+                await new Promise(r => setTimeout(r, wait));
+
             } else {
-                console.error(`[❌ 嚴重錯誤] 肅清中斷: ${err.message}`);
-                hasMore = false;
+
+                console.log(`[GodShield] 清理錯誤 ${err.message}`);
+                break;
+
             }
+
         }
+
     }
 
     SYSTEM_STATE.purgingChannels.delete(channel.id);
-    console.log(`[✅ 肅清完成] 頻道: ${channel.name} | 總計清除: ${totalDeleted} 則`);
+
+    console.log(`[GodShield] 清理完成 ${channel.name} 共刪 ${totalDeleted}`);
+
     return totalDeleted;
 }
 
