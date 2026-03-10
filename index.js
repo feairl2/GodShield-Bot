@@ -27,7 +27,7 @@ const CONFIG = {
         WINDOW: 2000,
         DUPLICATE_LIMIT: 3,
         EMOJI_LIMIT: 10,
-        MAX_CHARS: 350,
+        MAX_CHARS: 300,
     },
     PUNISHMENT: {
         DEFAULT_TYPE: 'BAN',
