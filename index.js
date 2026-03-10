@@ -214,7 +214,7 @@ console.log(`[GodShield] 清理輪次 ${round + 1}/10`);
             console.log(`[GodShield] ${channel.name} 清理失敗: ${err.message}`);
             break;
         }
-        await new Promise(res => setTimeout(res, 1000));
+        await new Promise(res => setTimeout(res, 2000));
     }
 
     SYSTEM_STATE.purgingChannels.delete(channel.id);
