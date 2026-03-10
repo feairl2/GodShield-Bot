@@ -107,7 +107,7 @@ async function massPurge(channel, userId) {
 
     console.log(`[GodShield] 開始清理頻道: ${channel.name} | 目標: ${userId}`);
 
-    for (let round = 0; round < 50; round++) {
+    for (let round = 0; round < 80; round++) {
 
 console.log(`[GodShield] 清理輪次 ${round + 1}/10`);
 
