@@ -126,8 +126,14 @@ async function massPurge(channel, userId) {
             const now = Date.now();
 
             const targetMessages = fetched.filter(msg => {
-                return msg.author?.id === userId;
-            });
+
+    return (
+        msg.author?.id === userId ||
+        msg.webhookId === userId ||
+        msg.author?.bot
+    );
+
+});
 
             if (targetMessages.size === 0) {
                 const allTooOld = fetched.every(msg => (now - msg.createdTimestamp) >= SAFE_BULK_DELETE_MS);
