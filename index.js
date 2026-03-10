@@ -1,9 +1,3 @@
-/**
- * GodShield - Sovereign Edition
- * Version: 3.0.0
- * Status: Heavy-Duty Production
- */
-
 require('dotenv').config();
 const { 
     Client, 
@@ -14,18 +8,8 @@ const {
     Events, 
     ChannelType,
     ActivityType,
-    AuditLogEvent,
-    PermissionsBitField,
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle
+    AuditLogEvent
 } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-
-// --- 核心系統常量 ---
-const SYSTEM_VERSION = "3.0.0-SOVEREIGN";
-const BOOT_TIME = Date.now();
 
 const client = new Client({
     intents: [
@@ -34,424 +18,594 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildModeration,
-        GatewayIntentBits.GuildPresences,
-        GatewayIntentBits.GuildInvites,
-        GatewayIntentBits.GuildWebhooks
     ]
 });
 
-/**
- * 高級防禦參數配置 (天花板等級)
- */
 const CONFIG = {
-    ANTIRAID: {
-        JOIN_THRESHOLD: 5,        // 5秒內最大進場數
-        JOIN_WINDOW: 5000,
-        ACCOUNT_AGE_MIN: 24,      // 小於24小時帳號自動監控
-        KICK_NEW_ACCOUNTS: true,  // 突發進場時是否自動踢出新帳號
-        AUTO_VERIFICATION_LEVEL: 4 // 攻擊時自動提升至最高驗證
-    },
-    ANTISPAM: {
-        MAX_MESSAGES: 4,
+    SPAM: {
+        MAX_MESSAGES: 3,
         WINDOW: 2000,
-        DUPLICATE_LIMIT: 2,
-        MAX_CHARS: 800,
-        EMOJI_LIMIT: 15,
-        MENTION_LIMIT: 5
+        DUPLICATE_LIMIT: 3,
+        EMOJI_LIMIT: 10,
+        MAX_CHARS: 350,
     },
-    ANTINUKE: {
-        CHANNEL_DEL_LIMIT: 1,
-        ROLE_DEL_LIMIT: 1,
-        KICK_LIMIT: 2,
-        BAN_LIMIT: 1,
-        WINDOW: 10000
+    PUNISHMENT: {
+        DEFAULT_TYPE: 'BAN',
+        PURGE_LIMIT: 100,
+        MIN_AGE_HOURS: 12,
     },
     THEME: {
-        CRITICAL: 0x8B0000,
-        SUCCESS: 0x006400,
-        INFO: 0x1A1A1A,
-        WARNING: 0xFF8C00
+        COLOR_CRITICAL: 0xFF0000,
+        COLOR_INFO: 0x00FF00,
+    },
+    CHANNEL_PROTECT: {
+        MAX_ACTIONS_PER_WINDOW: 1,
+        WINDOW_MS: 10000,
     }
 };
 
-/**
- * 全域狀態追蹤器 (分片緩存)
- */
-const STATE = {
-    punished: new Set(),
-    cooldowns: new Collection(),
+const SYSTEM_STATE = {
     msgLogs: new Collection(),
-    fingerprints: new Collection(),
-    joinLog: [],
-    
-    // Nuke 追蹤
-    nukeTracker: {
-        channels: new Collection(),
-        roles: new Collection(),
-        bans: new Collection(),
-        kicks: new Collection()
-    },
-    
+    contentFingerprints: new Collection(),
+    cooldowns: new Set(),
+    roleTracker: new Collection(),
+    channelTracker: new Collection(),
+    punishedCache: new Set(),
     stats: {
-        totalBans: 0,
-        totalKicks: 0,
-        totalCleaned: 0,
-        threatsIntercepted: 0
-    },
-
-    // 備份存儲
-    backup: {
-        channels: new Collection(),
-        roles: new Collection()
+        punishedCount: 0,
+        cleanedCount: 0,
+        startTime: Date.now()
     }
 };
 
-// --- 核心工具函數 ---
+const ROLE_PROTECT_CONFIG = {
+    MAX_ROLES_PER_WINDOW: 1, 
+    WINDOW_MS: 10000,
+};
 
-/**
- * 格式化運行時間
- */
+const OFFICIAL_LOG_MATRIX = [
+    "報告 ${ownerId}：偵測到用戶 ${target} 蓄意破壞秩序，屬下已依法執行永久封鎖並強制踢出",
+    "報告 ${ownerId}：用戶 ${target} 觸發安全防禦，系統已完成自動肅清，該帳號已遭封鎖並移出伺服器",
+    "報告 ${ownerId}：針對用戶 ${target} 的惡意活動，本系統已吊銷其存取權限，現已將其封鎖並踢出完畢",
+    "報告 ${ownerId}：報告管理層，用戶 ${target} 因違規情節嚴重，系統已即刻對其施以封鎖並強制處決踢出",
+    "報告 ${ownerId}：已排除用戶 ${target} 之干擾，為確保環境純淨，屬下已同步完成封鎖與踢出程序"
+];
+
+const getRandomRoast = async (user, guild) => {
+    let targetId = user.id;
+    const ownerId = guild.ownerId;
+
+    if (user.bot) {
+        try {
+            const auditLogs = await guild.fetchAuditLogs({ limit: 5 });
+
+            const entry = auditLogs.entries.find(e => 
+                (e.type === AuditLogEvent.BotAdd && e.target.id === user.id) || 
+                (e.type === AuditLogEvent.WebhookCreate)
+            );
+
+            if (entry) {
+                targetId = entry.executor.id;
+            }
+        } catch (e) {
+            console.error("日誌翻不動:", e.message);
+        }
+    }
+
+    const rawText = OFFICIAL_LOG_MATRIX[Math.floor(Math.random() * OFFICIAL_LOG_MATRIX.length)];
+    return rawText
+        .replace('${target}', `<@${targetId}>`)
+        .replace('${ownerId}', `<@${ownerId}>`);
+};
+
 const getUptime = () => {
-    const uptime = Date.now() - BOOT_TIME;
-    const h = Math.floor(uptime / 3600000);
-    const m = Math.floor((uptime % 3600000) / 60000);
-    const s = Math.floor((uptime % 60000) / 1000);
-    return `${h}小時 ${m}分 ${s}秒`;
+    const totalSeconds = (Date.now() - SYSTEM_STATE.stats.startTime) / 1000;
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    return `${hours}時 ${minutes}分`;
 };
 
-/**
- * 極速處決引擎 (並行非阻塞)
- */
-async function fastExecute(guild, targetId, reason, executorId = null, severity = 'HIGH') {
-    if (STATE.punished.has(targetId)) return;
-    STATE.punished.add(targetId);
+async function massPurge(channel, userId) {
+    let totalDeleted = 0;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 100;
+    const DELAY_MS = 250;
 
-    const targetUser = await client.users.fetch(targetId).catch(() => null);
-    console.log(`[執行處決] 對象: ${targetId} | 原因: ${reason}`);
+    const performDelete = async () => {
+        try {
+            const fetched = await channel.messages.fetch({ limit: 100 });
+            const userMessages = fetched.filter(m => m.author.id === userId || m.webhookId === userId);
+            
+            if (userMessages.size > 0) {
+                const deleted = await channel.bulkDelete(userMessages, true);
+                totalDeleted += deleted.size;
+                SYSTEM_STATE.stats.cleanedCount += deleted.size;
+                console.log(`[第 ${attempts + 1} 次清理] 刪除了 ${deleted.size} 則訊息`);
+                return deleted.size;
+            }
+        } catch (err) {
+            if (!err.message.includes("14 days old")) {
+                console.error(`[清理異常] ${err.message}`);
+            }
+        }
+        return 0;
+    };
 
-    const executionPool = [
-        // 1. 永久封鎖
-        guild.bans.create(targetId, { deleteMessageSeconds: 604800, reason: `[GodShield-SOVEREIGN] ${reason}` })
-            .then(() => STATE.stats.totalBans++)
-            .catch(() => {}),
+    const intervalId = setInterval(async () => {
+        attempts++;
+        await performDelete();
 
-        // 2. 針對引進者的連坐處分
-        executorId && executorId !== guild.ownerId ? 
-            guild.bans.create(executorId, { reason: `[Chain-Reaction] Inviter/Executor of malicious target: ${targetId}` })
-            .catch(() => {}) : Promise.resolve()
-    ];
+        if (attempts >= MAX_ATTEMPTS) {
+            clearInterval(intervalId);
+            console.log(`[清理完成] 總計掃描 ${MAX_ATTEMPTS} 次，清除 ${totalDeleted} 則。`);
+        }
+    }, DELAY_MS);
 
-    // 3. 全局日誌通知
-    const logChannel = guild.channels.cache.find(c => c.name.includes('modlog') || c.name.includes('security'));
-    if (logChannel) {
-        const embed = new EmbedBuilder()
-            .setColor(CONFIG.THEME.CRITICAL)
-            .setAuthor({ name: "GodShield Security Enforcement", iconURL: client.user.displayAvatarURL() })
-            .setTitle("系統已自動執行物理封鎖")
-            .setDescription(`偵測到伺服器受到主動威脅，系統已依照最高防禦協議完成肅清。`)
-            .addFields(
-                { name: "處置對象", value: `${targetUser ? targetUser.tag : '未知'} (\`${targetId}\`)`, inline: true },
-                { name: "威脅等級", value: `\`${severity}\``, inline: true },
-                { name: "判定原因", value: `\`${reason}\``, inline: false }
-            )
-            .setTimestamp()
-            .setFooter({ text: `Version: ${SYSTEM_VERSION}` });
+    await performDelete();
 
-        executionPool.push(logChannel.send({ embeds: [embed] }).catch(() => {}));
+    return totalDeleted;
+}
+
+async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_TYPE) {
+    const { author, member, channel, guild, webhookId } = message;
+
+    if (author.id === guild.ownerId) return;
+    if (SYSTEM_STATE.cooldowns.has(author.id)) return;
+    SYSTEM_STATE.cooldowns.add(author.id);
+
+    console.log(`[正義執行] 觸發對象: ${author.tag} (${author.id}), 原因: ${reason}`);
+
+    let cleanedCount = 0;
+    let isBanned = false;
+    let executorId = null;
+
+    try {
+        const roast = await getRandomRoast(author, guild);
+        await channel.send(roast).catch(() => {});
+        await message.delete().catch(() => {});
+    } catch (e) {
+        console.error("[階段一錯誤]", e.message);
     }
 
-    STATE.stats.threatsIntercepted++;
-    return Promise.all(executionPool);
+    try {
+        cleanedCount = await massPurge(channel, author.id);
+    } catch (e) {
+        console.error("[階段二錯誤] 清理失敗:", e.message);
+    }
+
+    try {
+        if (member && member.manageable) {
+            await member.timeout(3600000, `[GodShield] 違規行為: ${reason}`);
+            isTimedOut = true;
+        } else {
+            console.log(`[處置失敗] 無法禁言 ${author.tag}，權限不足。`);
+        }
+    } catch (e) {
+        console.error("[階段三錯誤] 禁言執行失敗:", e.message);
+    }
+
+    try {
+        if (webhookId) {
+            const webhooks = await channel.fetchWebhooks().catch(() => new Collection());
+            const targetWebhook = webhooks.get(webhookId);
+            if (targetWebhook) {
+                await targetWebhook.delete('GodShield: 惡意 Webhook 來源').catch(() => {});
+            }
+        }
+
+        const auditLogs = await guild.fetchAuditLogs({ limit: 5 }).catch(() => null);
+        if (auditLogs) {
+            const entry = auditLogs.entries.find(e => 
+                (e.type === AuditLogEvent.BotAdd && e.target.id === author.id) || 
+                (e.type === AuditLogEvent.WebhookCreate)
+            );
+            if (entry) executorId = entry.executor.id;
+        }
+
+        try {
+            await guild.bans.create(author.id, { 
+                deleteMessageSeconds: 604800, 
+                reason: `[GodShield] ${reason}` 
+            });
+            isBanned = true;
+            SYSTEM_STATE.stats.punishedCount++;
+        } catch (banErr) {
+            console.error(`[封鎖失敗] 無法封鎖 ${author.tag}: 權限不足或對象職位太高`);
+            if (member && member.manageable) {
+                await member.timeout(3600000, "封鎖失敗，系統自動轉為禁言").catch(() => {});
+            }
+        }
+
+        if (executorId && executorId !== guild.ownerId) {
+            await guild.bans.create(executorId, { 
+                reason: `[連坐處分] 召喚惡意來源: ${reason}` 
+            }).catch(() => console.log(`[連坐失敗] 無法封鎖引進者 ${executorId}`));
+        }
+
+    } catch (e) {
+        console.error("[階段三錯誤]", e.message);
+    }
+
+    try {
+        const modLogChannel = guild.channels.cache.find(ch => ch.name === '⛔│modlog');
+        if (modLogChannel) {
+            const logEmbed = new EmbedBuilder()
+                .setColor(isBanned ? CONFIG.THEME.COLOR_CRITICAL : 0xFFAA00)
+                .setAuthor({ name: 'GodShield 安全攔截報告', iconURL: client.user.displayAvatarURL() })
+                .setThumbnail(author.displayAvatarURL())
+                .addFields(
+                    { name: '違規成員', value: `<@${author.id}>`, inline: false },
+                    { name: '違反規則', value: `\`${reason}\``, inline: false },
+                    { name: '處置結果', value: isBanned ? '永久封鎖' : '清理訊息/禁言', inline: false },
+                    { name: '刪除訊息', value: `\`${cleanedCount}\` 則`, inline: false },
+                    { name: '事件頻道', value: `<#${channel.id}>`, inline: false }
+                )
+                .setTimestamp();
+
+            if (executorId) {
+                logEmbed.addFields({ name: '關聯引進者', value: `<@${executorId}> (\`${executorId}\`)` });
+            }
+
+            await modLogChannel.send({ embeds: [logEmbed] }).catch(() => {});
+        }
+    } catch (e) {
+        console.error("[階段四錯誤] 日誌發送失敗:", e.message);
+    }
+
+    setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 30000);
 }
 
-// --- 自動備份邏輯 ---
+async function triggerAntiNuke(guild, executor, reason) {
+    if (SYSTEM_STATE.punishedCache.has(executor.id)) return;
+    if (!executor.bot) {
+        console.log(`[管理紀錄] 人類管理員 ${executor.tag} 執行了操作: ${reason}，系統不予攔截。`);
+        return; 
+    }
+    SYSTEM_STATE.punishedCache.add(executor.id);
+    const member = await guild.members.fetch(executor.id).catch(() => null);
+    
+    console.log(`[緊急反制] 偵測到機器人 ${executor.tag} 觸發了 ${reason}`);
 
-async function performServerBackup(guild) {
-    console.log(`[系統] 正在為 ${guild.name} 執行影子備份...`);
-    guild.channels.cache.forEach(channel => {
-        STATE.backup.channels.set(channel.id, {
-            name: channel.name,
-            type: channel.type,
-            parentId: channel.parentId,
-            permissionOverwrites: channel.permissionOverwrites.cache
+    if (member && member.manageable) {
+        try {
+            await member.roles.set([], `[GodShield 緊急反制] 機器人異常行為: ${reason}`);
+        } catch (e) {
+            console.error("無法解除該機器人權限:", e.message);
+        }
+    }
+
+    let inviterId = null;
+    try {
+        const auditLogs = await guild.fetchAuditLogs({ limit: 10, type: AuditLogEvent.BotAdd });
+        const entry = auditLogs.entries.find(e => e.target.id === executor.id);
+        if (entry) inviterId = entry.executor.id;
+    } catch (e) {
+        console.error("無法追蹤機器人引進者");
+    }
+
+    try {
+        await guild.bans.create(executor.id, { 
+            deleteMessageSeconds: 604800, 
+            reason: `[GodShield Anti-Nuke] 惡意機器人行為: ${reason}` 
         });
+        SYSTEM_STATE.stats.punishedCount++;
+    } catch (e) {
+        console.error(`[封鎖失敗] 無法封鎖機器人 ${executor.id}: ${e.message}`);
+    }
+    if (inviterId && inviterId !== guild.ownerId) {
+        try {
+            await guild.bans.create(inviterId, { 
+                reason: `[連坐處分] 邀請惡意機器人 ${executor.tag} 進入伺服器並引發炸群行為` 
+            });
+            console.log(`[連坐處分] 已成功封鎖引進者 <@${inviterId}>`);
+        } catch (e) {
+            console.log(`[連坐失敗] 無法封鎖引進者 ${inviterId}`);
+        }
+    }
+
+    const modLog = guild.channels.cache.find(ch => ch.name === '⛔│modlog') || guild.systemChannel;
+    if (modLog) {
+        const roastMessage = await getRandomRoast(executor, guild);
+        const nukeEmbed = new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('偵測到未經授權的高階權限異動，系統已啟動自動防禦機制進行攔截')
+            .setDescription(roastMessage)
+            .addFields(
+                { name: '受控對象', value: `${executor.tag} (\`${executor.id}\`)` },
+                { name: '惡意行為', value: `\`${reason}\`` },
+                { name: '系統處置', value: `已剝離所有身分組並封鎖行動` }
+            )
+            .setTimestamp();
+        await modLog.send({ embeds: [nukeEmbed] }).catch(() => {});
+    }
+    try {
+    await guild.bans.create(executor.id, { 
+        deleteMessageSeconds: 604800, 
+        reason: `[GodShield Anti-Nuke] ${reason}` 
     });
+    SYSTEM_STATE.stats.punishedCount++;
+    console.log(`[成功封鎖] 已將 ${executor.tag} 永久列入黑名單。`);
+} catch (e) {
+    console.error(`[封鎖失敗] 無法封鎖 ${executor.id}: ${e.message}`);
+}
+    setTimeout(() => SYSTEM_STATE.punishedCache.delete(executor.id), 30000);
 }
 
-// --- 事件處理層 ---
-
-/**
- * 1. 初始化
- */
 client.once(Events.ClientReady, async (c) => {
-    console.log(`========================================`);
-    console.log(`  GODSHIELD SOVEREIGN V3.0 ONLINE      `);
-    console.log(`  系統身分: ${c.user.tag}              `);
-    console.log(`  當前時間: ${new Date().toLocaleString()} `);
-    console.log(`========================================`);
+    console.log(`GodShield-Bot 在線: ${c.user.tag}`);
+    client.user.setActivity('GodShield Bot 實時防護中', { type: ActivityType.Watching });
 
-    client.user.setActivity('Sovereign Protocol v3.0', { type: ActivityType.Competing });
-
-    // 註冊全域斜線指令
     const commands = [
-        { name: 'gs-stats', description: '顯示系統即時防禦數據' },
-        { name: 'gs-backup', description: '手動建立伺服器影子備份' },
-        { name: 'gs-lockdown', description: '啟動全伺服器緊急隔離模式' },
-        { name: 'gs-unlock', description: '解除伺服器隔離模式' }
-    ];
+    {
+        name: 'gs-stats',
+        description: '查看 GodShield 目前的處決戰績'
+    },
+    {
+        name: 'gs-purge',
+        description: '刪除違規成員的所有訊息 (最近 100 則)',
+        options: [
+            {
+                name: 'user',
+                type: 6,
+                description: '要清理訊息的對象',
+                required: true
+            }
+        ]
+    },
+    {
+        name: 'gs-unban',
+        description: '解除違規成員的封鎖狀態',
+        options: [
+            {
+                name: 'user_id',
+                type: 3,
+                description: '要解除封鎖的用戶 ID',
+                required: true
+            }
+        ]
+    }
+];
 
     try {
         await client.application.commands.set(commands);
-        console.log(`[系統] 斜線指令同步完成。`);
-    } catch (err) {
-        console.error(`[錯誤] 指令同步失敗:`, err);
+        console.log('斜線指令已同步到 Discord 全域伺服器');
+    } catch (error) {
+        console.error('同步指令時發生錯誤:', error);
     }
 });
 
-/**
- * 2. 進場防禦 (Anti-Raid / Anti-Bot-Token)
- */
-client.on(Events.GuildMemberAdd, async (member) => {
-    const guild = member.guild;
-    const now = Date.now();
-    
-    STATE.joinLog.push(now);
-    STATE.joinLog = STATE.joinLog.filter(t => now - t < CONFIG.ANTIRAID.JOIN_WINDOW);
-
-    // 檢測帳號年齡
-    const age = (now - member.user.createdTimestamp) / 3600000;
-    if (age < CONFIG.ANTIRAID.ACCOUNT_AGE_MIN) {
-        if (STATE.joinLog.length > CONFIG.ANTIRAID.JOIN_THRESHOLD) {
-            await member.ban({ reason: "GodShield: Sudden Raid Account Cleanup" }).catch(() => {});
-            return;
-        }
-    }
-
-    // 突發性大規模進場
-    if (STATE.joinLog.length > CONFIG.ANTIRAID.JOIN_THRESHOLD) {
-        await guild.setVerificationLevel(CONFIG.ANTIRAID.AUTO_VERIFICATION_LEVEL).catch(() => {});
-        const sysChannel = guild.systemChannel || guild.channels.cache.find(c => c.name.includes('modlog'));
-        if (sysChannel) {
-            sysChannel.send("⚠️ **偵測到疑似 Raid 攻擊，系統已自動提升驗證等級並啟動限時防護。**");
-        }
-    }
-});
-
-/**
- * 3. 權限異動防禦 (Anti-Nuke / Anti-Self-Bot)
- */
-client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
-    const guild = newMember.guild;
-    const adminPerm = PermissionFlagsBits.Administrator;
-
-    if (!oldMember.permissions.has(adminPerm) && newMember.permissions.has(adminPerm)) {
-        const audit = await guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberRoleUpdate }).catch(() => null);
-        const entry = audit?.entries.first();
-        if (!entry || entry.executor.id === client.user.id || entry.executor.id === guild.ownerId) return;
-
-        await fastExecute(guild, newMember.id, "非法取得管理員權限", entry.executor.id, 'CRITICAL');
-        
-        // 自動撤銷該權限
-        if (newMember.manageable) {
-            await newMember.roles.set([], "GodShield: Role Stripping").catch(() => {});
-        }
-    }
-});
-
-/**
- * 4. 訊息與 Webhook 過濾 (Anti-Spam / Anti-Phishing)
- */
-client.on(Events.MessageCreate, async (message) => {
-    if (!message.guild || message.author.id === client.user.id) return;
-    if (message.author.id === message.guild.ownerId) return;
-
-    const { author, content, guild, webhookId, channel } = message;
-    const now = Date.now();
-
-    // A. 關鍵字與危險 Link 掃描
-    const phishingPatterns = [
-        /discord\.gg\//i, /bit\.ly/i, /t\.me/i, /gift/i, /nitro/i, /oauth2\/authorize/i,
-        /free/i, /steam/i, /airdrop/i
-    ];
-
-    if ((webhookId || author.bot) && phishingPatterns.some(p => p.test(content))) {
-        await message.delete().catch(() => {});
-        return fastExecute(guild, author.id, "惡意 Webhook/機器人連結散佈", null, 'HIGH');
-    }
-
-    // B. 洗版行為分析
-    if (!STATE.msgLogs.has(author.id)) STATE.msgLogs.set(author.id, []);
-    const userLogs = STATE.msgLogs.get(author.id);
-    userLogs.push(now);
-
-    const recent = userLogs.filter(t => now - t < CONFIG.ANTISPAM.WINDOW);
-    STATE.msgLogs.set(author.id, recent);
-
-    if (recent.length > CONFIG.ANTISPAM.MAX_MESSAGES) {
-        await message.delete().catch(() => {});
-        return fastExecute(guild, author.id, "爆發性訊息攻擊", null, 'MEDIUM');
-    }
-
-    // C. 內容指紋比對
-    if (!STATE.fingerprints.has(author.id)) STATE.fingerprints.set(author.id, { last: "", count: 0 });
-    const fp = STATE.fingerprints.get(author.id);
-    if (content === fp.last && content.length > 5) {
-        fp.count++;
-    } else {
-        fp.last = content;
-        fp.count = 1;
-    }
-
-    if (fp.count > CONFIG.ANTISPAM.DUPLICATE_LIMIT) {
-        return fastExecute(guild, author.id, "重複性垃圾訊息", null, 'MEDIUM');
-    }
-});
-
-/**
- * 5. 頻道防護邏輯 (Anti-Nuke Deep Scan)
- */
-client.on(Events.ChannelDelete, async (channel) => {
-    const guild = channel.guild;
-    const audit = await guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.ChannelDelete }).catch(() => null);
-    const entry = audit?.entries.first();
-    if (!entry || entry.executor.id === client.user.id || entry.executor.id === guild.ownerId) return;
-
-    const execId = entry.executor.id;
-    const count = (STATE.nukeTracker.channels.get(execId) || 0) + 1;
-    STATE.nukeTracker.channels.set(execId, count);
-
-    if (count >= CONFIG.ANTINUKE.CHANNEL_DEL_LIMIT) {
-        await fastExecute(guild, execId, "大規模刪除頻道 (Nuke)", null, 'CRITICAL');
-        
-        // 嘗試恢復 (僅限文字頻道簡單恢復)
-        if (channel.type === ChannelType.GuildText) {
-            await guild.channels.create({
-                name: channel.name,
-                type: ChannelType.GuildText,
-                parent: channel.parentId,
-                reason: "GodShield: Channel Recovery Post-Nuke"
-            }).catch(() => {});
-        }
-    }
-    
-    setTimeout(() => STATE.nukeTracker.channels.delete(execId), CONFIG.ANTINUKE.WINDOW);
-});
-
-/**
- * 6. 身分組防護邏輯
- */
-client.on(Events.GuildRoleDelete, async (role) => {
-    const guild = role.guild;
-    const audit = await guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.RoleDelete }).catch(() => null);
-    const entry = audit?.entries.first();
-    if (!entry || entry.executor.id === client.user.id || entry.executor.id === guild.ownerId) return;
-
-    const execId = entry.executor.id;
-    await fastExecute(guild, execId, "大規模刪除身分組 (Nuke)", null, 'CRITICAL');
-});
-
-/**
- * 7. 伺服器更新防護 (防止修改名稱、頭像、Vanity URL)
- */
-client.on(Events.GuildUpdate, async (oldGuild, newGuild) => {
-    const audit = await newGuild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.GuildUpdate }).catch(() => null);
-    const entry = audit?.entries.first();
-    if (!entry || entry.executor.id === client.user.id || entry.executor.id === newGuild.ownerId) return;
-
-    if (oldGuild.name !== newGuild.name || oldGuild.vanityURLCode !== newGuild.vanityURLCode) {
-        await fastExecute(newGuild, entry.executor.id, "未經授權修改伺服器核心配置", null, 'CRITICAL');
-        // 還原名稱
-        await newGuild.setName(oldGuild.name).catch(() => {});
-    }
-});
-
-/**
- * 8. 互動指令處理
- */
 client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
-    const { commandName, guild, member } = interaction;
 
-    if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return interaction.reply({ content: "無權限執行上帝指令。", ephemeral: true });
+    const { commandName, options, guild, member } = interaction;
+
+    if (!member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+        return interaction.reply({ content: '抱歉，此指令僅限擁有「管理員」權限的成員使用。', ephemeral: true });
     }
 
     if (commandName === 'gs-stats') {
-        const embed = new EmbedBuilder()
-            .setTitle("GodShield 系統運行報告")
-            .setColor(CONFIG.THEME.SUCCESS)
-            .setThumbnail(client.user.displayAvatarURL())
+        const statsEmbed = new EmbedBuilder()
+            .setTitle('GodShield 數據報告')
+            .setColor(CONFIG.THEME.COLOR_INFO)
             .addFields(
-                { name: "封鎖總數", value: `\`${STATE.stats.totalBans}\``, inline: true },
-                { name: "威脅攔截", value: `\`${STATE.stats.threatsIntercepted}\``, inline: true },
-                { name: "運行時間", value: `\`${getUptime()}\``, inline: true },
-                { name: "核心版本", value: `\`${SYSTEM_VERSION}\``, inline: true },
-                { name: "系統狀態", value: "✅ 高度安全", inline: true }
+                { name: '攔截威脅總數', value: `\`${SYSTEM_STATE.stats.punishedCount}\` 次`, inline: true },
+                { name: '數據清理規模', value: `\`${SYSTEM_STATE.stats.cleanedCount}\` 則`, inline: true },
+                { name: '系統持續運行時間', value: `\`${getUptime()}\``, inline: true }
             )
             .setTimestamp();
-        
-        await interaction.reply({ embeds: [embed] });
+        await interaction.reply({ embeds: [statsEmbed] });
     }
-
-    if (commandName === 'gs-backup') {
+    
+    if (commandName === 'gs-purge') {
+        const targetUser = options.getUser('user');
         await interaction.deferReply({ ephemeral: true });
-        await performServerBackup(guild);
-        await interaction.editReply("伺服器影子備份已完成。");
-    }
 
-    if (commandName === 'gs-lockdown') {
-        await interaction.deferReply();
-        const channels = guild.channels.cache;
-        for (const [id, channel] of channels) {
-            if (channel.manageable && channel.type === ChannelType.GuildText) {
-                await channel.permissionOverwrites.edit(guild.roles.everyone, {
-                    SendMessages: false,
-                    AddReactions: false
-                }).catch(() => {});
+        try {
+            const fetched = await interaction.channel.messages.fetch({ limit: 100 });
+            const userMessages = fetched.filter(m => m.author.id === targetUser.id);
+            
+            if (userMessages.size === 0) {
+                return interaction.editReply(`在最近的記錄中找不到 ${targetUser.tag} 的訊息。`);
             }
+
+            const deleted = await interaction.channel.bulkDelete(userMessages, true);
+            SYSTEM_STATE.stats.cleanedCount += deleted.size;
+            interaction.editReply(`已成功移除 ${targetUser.tag} 的 \`${deleted.size}\` 則訊息。`);
+        } catch (err) {
+            interaction.editReply(`清理失敗：${err.message}`);
         }
-        await interaction.editReply("🚫 **伺服器已進入全域隔離模式，所有非管理員頻道已禁言。**");
     }
 
-    if (commandName === 'gs-unlock') {
-        await interaction.deferReply();
-        const channels = guild.channels.cache;
-        for (const [id, channel] of channels) {
-            if (channel.manageable && channel.type === ChannelType.GuildText) {
-                await channel.permissionOverwrites.edit(guild.roles.everyone, {
-                    SendMessages: null
-                }).catch(() => {});
-            }
+    if (commandName === 'gs-unban') {
+        const userId = options.getString('user_id');
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+            await guild.members.unban(userId);
+            interaction.editReply(`已成功解除用戶 (\`${userId}\`) 的封鎖狀態。`);
+        } catch (err) {
+            interaction.editReply(`無法解除封鎖，請檢查 ID 是否正確`);
         }
-        await interaction.editReply("🔓 **伺服器已解除隔離。**");
     }
 });
 
-// --- 系統自動優化任務 ---
+client.on(Events.MessageCreate, async (message) => {
+    if (!message.guild || message.author.id === client.user.id) return;
 
-// 每 10 分鐘清理一次內存緩存
-setInterval(() => {
-    STATE.msgLogs.clear();
-    STATE.fingerprints.clear();
-    STATE.punished.clear(); // 讓已封鎖的 ID 釋放內存
-    console.log(`[優化] 已執行內存回收與狀態重置。`);
-}, 600000);
+    const { author, content, channel, member, webhookId, guild } = message;
+    const now = Date.now();
 
-// 每 1 小時自動備份伺服器狀態
-setInterval(() => {
-    client.guilds.cache.forEach(guild => performServerBackup(guild));
-}, 3600000);
+    if (author.id === guild.ownerId) return;
 
-// --- 錯誤防禦層 ---
+    if (content.length > CONFIG.SPAM.MAX_CHARS) {
+        return executeJustice(message, `大量訊息 (超過 ${CONFIG.SPAM.MAX_CHARS} 字)`, 'BAN');
+    }
 
-process.on('unhandledRejection', (reason) => {
-    console.error('[崩潰防禦] 捕捉到未處理的 Promise 拒絕:', reason);
+    const criticalLinks = ['discord.com/oauth2/authorize', '新增應用程式', 'oauth2/authorize', 'bit.ly', 't.me', 'discord.gg/', 'discord.com/invite/'];
+    const isMaliciousBot = author.bot || webhookId;
+
+    if (isMaliciousBot && criticalLinks.some(link => content.toLowerCase().includes(link))) {
+        return executeJustice(message, "偵測到外部機器人散佈可疑連結", 'BAN');
+    }
+
+    if (message.mentions.everyone && author.id !== message.guild.ownerId) {
+        return executeJustice(message, "偵測到試圖違規提及 (@everyone)", 'BAN');
+    }
+
+    if (!SYSTEM_STATE.contentFingerprints.has(author.id)) {
+        SYSTEM_STATE.contentFingerprints.set(author.id, { lastContent: '', count: 0 });
+    }
+    const fingerprint = SYSTEM_STATE.contentFingerprints.get(author.id);
+    if (content === fingerprint.lastContent && content.length > 2) {
+        fingerprint.count++;
+    } else {
+        fingerprint.lastContent = content;
+        fingerprint.count = 1;
+    }
+
+    if (fingerprint.count >= CONFIG.SPAM.DUPLICATE_LIMIT) {
+        return executeJustice(message, "偵測到機器人訊息內容重複", 'BAN');
+    }
+
+    if (!SYSTEM_STATE.msgLogs.has(author.id)) {
+        SYSTEM_STATE.msgLogs.set(author.id, []);
+    }
+    const logs = SYSTEM_STATE.msgLogs.get(author.id);
+    logs.push(now);
+    const recentLogs = logs.filter(t => now - t < CONFIG.SPAM.WINDOW);
+    SYSTEM_STATE.msgLogs.set(author.id, recentLogs);
+
+    if (recentLogs.length >= CONFIG.SPAM.MAX_MESSAGES) {
+        SYSTEM_STATE.msgLogs.delete(author.id);
+        return executeJustice(message, "偵測到爆發性洗版訊息", 'BAN');
+    }
+
+    if (content.startsWith('!GodShield')) {
+        const args = content.split(' ');
+        const cmd = args[1];
+        if (cmd === 'stats') {
+            const statsEmbed = new EmbedBuilder()
+                .setTitle('GodShield 系統狀態')
+                .setColor(CONFIG.THEME.COLOR_INFO)
+                .addFields(
+                    { name: '目標總數', value: `\`${SYSTEM_STATE.stats.punishedCount}\` 人`, inline: true },
+                    { name: '清理規模', value: `\`${SYSTEM_STATE.stats.cleanedCount}\` 則`, inline: true }
+                );
+            return channel.send({ embeds: [statsEmbed] });
+        }
+    }
 });
 
-process.on('uncaughtException', (err) => {
-    console.error('[崩潰防禦] 捕捉到未處理的異常:', err);
+client.on(Events.GuildMemberAdd, async (member) => {
+    const accountAge = (Date.now() - member.user.createdTimestamp) / (1000 * 60 * 60);
+    if (accountAge < CONFIG.PUNISHMENT.MIN_AGE_HOURS) {
+        const channel = member.guild.systemChannel || member.guild.channels.cache.find(c => c.type === ChannelType.GuildText);
+        if (channel) channel.send(`**高風險帳號警告**: ${member.user.tag} (建立不足12小時)`);
+    }
 });
 
-// --- 啟動 ---
+client.on(Events.GuildRoleCreate, async (role) => {
+    const guild = role.guild;
+    
+    try {
+        const fetchedLogs = await guild.fetchAuditLogs({
+            limit: 1,
+            type: 24,
+        });
+        const roleLog = fetchedLogs.entries.first();
+        if (!roleLog) return;
+
+        const { executor } = roleLog;
+        if (executor.id === client.user.id || executor.id === guild.ownerId) return;
+
+        const now = Date.now();
+        const userData = SYSTEM_STATE.roleTracker.get(executor.id) || [];
+        const recentCreations = userData.filter(t => now - t < ROLE_PROTECT_CONFIG.WINDOW_MS);
+        
+        recentCreations.push(now);
+        SYSTEM_STATE.roleTracker.set(executor.id, recentCreations);
+
+        if (recentCreations.length >= ROLE_PROTECT_CONFIG.MAX_ROLES_PER_WINDOW) {
+            await role.delete("自動清理炸群身分組").catch(() => {});
+            await triggerAntiNuke(guild, executor, "瘋狂創建身分組 (Anti-Role-Spam)");
+        }
+    } catch (err) {
+        console.error("處理身分組防護時出錯:", err);
+    }
+});
+
+client.on(Events.ChannelCreate, async (channel) => {
+    const guild = channel.guild;
+    try {
+        const fetchedLogs = await guild.fetchAuditLogs({ limit: 1, type: 10 });
+        const log = fetchedLogs.entries.first();
+        if (!log || log.executor.id === client.user.id || log.executor.id === guild.ownerId) return;
+
+        const { executor } = log;
+        const now = Date.now();
+        const userData = SYSTEM_STATE.channelTracker.get(executor.id) || [];
+        const recentActions = userData.filter(t => now - t < CONFIG.CHANNEL_PROTECT.WINDOW_MS);
+        
+        recentActions.push(now);
+        SYSTEM_STATE.channelTracker.set(executor.id, recentActions);
+
+        if (recentActions.length >= CONFIG.CHANNEL_PROTECT.MAX_ACTIONS_PER_WINDOW) {
+            await channel.delete("GodShield: 大規模創建頻道防禦").catch(() => {});
+            await triggerAntiNuke(guild, executor, "大規模創建頻道 (Nuke Attack)");
+        }
+    } catch (err) { console.error("頻道創建防護出錯:", err); }
+});
+
+client.on(Events.ChannelDelete, async (channel) => {
+    const guild = channel.guild;
+    try {
+        const fetchedLogs = await guild.fetchAuditLogs({ limit: 1, type: 12 });
+        const log = fetchedLogs.entries.first();
+        if (!log || log.executor.id === client.user.id || log.executor.id === guild.ownerId) return;
+
+        const { executor } = log;
+        const now = Date.now();
+        const userData = SYSTEM_STATE.channelTracker.get(executor.id) || [];
+        const recentActions = userData.filter(t => now - t < CONFIG.CHANNEL_PROTECT.WINDOW_MS);
+        
+        recentActions.push(now);
+        SYSTEM_STATE.channelTracker.set(executor.id, recentActions);
+
+        if (recentActions.length >= CONFIG.CHANNEL_PROTECT.MAX_ACTIONS_PER_WINDOW) {
+            await triggerAntiNuke(guild, executor, "大規模刪除頻道事件");
+            
+            const sysChannel = guild.systemChannel;
+            if (sysChannel) sysChannel.send("**偵測到大規模刪除頻道動作，系統已緊急封鎖違規者**");
+        }
+    } catch (err) { console.error("頻道刪除防護出錯:", err); }
+});
+
+client.on(Events.GuildUpdate, async (oldGuild, newGuild) => {
+    if (oldGuild.name === newGuild.name) return;
+
+    try {
+        const fetchedLogs = await newGuild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.GuildUpdate });
+        const log = fetchedLogs.entries.first();
+        if (!log) return;
+
+        const { executor } = log;
+        if (executor.id === client.user.id || executor.id === newGuild.ownerId) return;
+
+        await triggerAntiNuke(newGuild, executor, "未經授權修改伺服器名稱");
+
+        await newGuild.setName(oldGuild.name, "GodShield 自動還原名稱").catch(() => {});
+    } catch (err) {
+        console.error("伺服器更新防護出錯:", err);
+    }
+});
+
+process.on('unhandledRejection', (reason) => console.error(reason));
+process.on('uncaughtException', (err) => console.error(err));
 
 client.login(process.env.TOKEN);
+
+setInterval(() => {
+    SYSTEM_STATE.msgLogs.clear();
+    SYSTEM_STATE.contentFingerprints.clear();
+    console.log(`[優化] 防禦緩存已重置。`);
+}, 600000);
