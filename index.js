@@ -292,9 +292,10 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
 
     if (targetUserId === guild.ownerId) return;
 
-    if (SYSTEM_STATE.cooldowns.has(targetUserId)) return;
-
+    if (!SYSTEM_STATE.cooldowns.has(targetUserId)) {
     SYSTEM_STATE.cooldowns.add(targetUserId);
+    setTimeout(() => SYSTEM_STATE.cooldowns.delete(targetUserId), 30000);
+}
 
     console.log(`[GodShield] 實際操作者: ${targetUserId}`);
 
@@ -405,8 +406,6 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     } catch (e) {
         console.error("[階段四錯誤] 日誌發送失敗:", e.message);
     }
-
-    setTimeout(() => SYSTEM_STATE.cooldowns.delete(author.id), 30000);
 }
 
 async function triggerAntiNuke(guild, executor, reason) {
