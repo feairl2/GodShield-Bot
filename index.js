@@ -448,7 +448,7 @@ async function triggerAntiNuke(guild, executor, reason) {
         }
     }
 
-    const modLog = guild.channels.cache.find(ch => ch.name === '⛔│modlog');
+    const modLog = await getModLogChannel(guild);
 
 if (modLog) {
 
@@ -456,9 +456,9 @@ if (modLog) {
         .setColor(0xFF0000)
         .setTitle('GodShield Anti-Nuke 攔截報告')
         .addFields(
-            { name: '違規對象', value: `${executor.tag} (\`${executor.id}\`)` },
-            { name: '偵測行為', value: `\`${reason}\`` },
-            { name: '系統處置', value: '已解除權限並永久封鎖' }
+            { name: '違規成員', value: `${executor.tag} (\`${executor.id}\`)` },
+            { name: '違反規則', value: `\`${reason}\`` },
+            { name: '處置結果', value: '已解除權限並永久封鎖' }
         )
         .setTimestamp();
 
