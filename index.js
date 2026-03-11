@@ -292,6 +292,9 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
 
     if (targetUserId === guild.ownerId) return;
 
+    if (SYSTEM_STATE.activePurgeTargets.has(targetUserId)) return;
+SYSTEM_STATE.activePurgeTargets.add(targetUserId);
+
     if (!SYSTEM_STATE.cooldowns.has(targetUserId)) {
     SYSTEM_STATE.cooldowns.add(targetUserId);
     setTimeout(() => SYSTEM_STATE.cooldowns.delete(targetUserId), 30000);
@@ -402,6 +405,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
             }
 
             await modLogChannel.send({ embeds: [logEmbed] }).catch(() => {});
+            SYSTEM_STATE.activePurgeTargets.delete(targetUserId);
         }
     } catch (e) {
         console.error("[階段四錯誤] 日誌發送失敗:", e.message);
@@ -577,6 +581,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 client.on(Events.MessageCreate, async (message) => {
     if (!message.guild || message.author.id === client.user.id) return;
+
+    if (SYSTEM_STATE.activePurgeTargets.has(message.author.id)) return;
 
     const { author, content, channel, member, webhookId, guild } = message;
     const now = Date.now();
