@@ -88,6 +88,39 @@ async function deleteOldMessagesIndividually(channel, messages) {
     return deletedCount;
 }
 
+async function getModLogChannel(guild) {
+
+    const keywords = ["modlog", "mod-log", "mod_log", "mod", "log"];
+
+    let channel = guild.channels.cache.find(c => {
+        if (!c.isTextBased()) return false;
+        const name = c.name.toLowerCase();
+        return keywords.some(k => name.includes(k));
+    });
+
+    if (channel) return channel;
+
+    console.log("[GodShield] 未找到 log 頻道，建立 mod-log");
+
+    try {
+
+        channel = await guild.channels.create({
+            name: "mod-log",
+            type: ChannelType.GuildText
+        });
+
+        await channel.setPosition(0).catch(()=>{});
+
+        return channel;
+
+    } catch (err) {
+
+        console.log("[GodShield] 建立 log 頻道失敗:", err.message);
+
+        return null;
+    }
+}
+
 async function massPurge(channel, userId) {
 
     if (!channel || !channel.isTextBased()) return 0;
@@ -347,7 +380,7 @@ async function executeJustice(message, reason, type = CONFIG.PUNISHMENT.DEFAULT_
     }
 
     try {
-        const modLogChannel = guild.channels.cache.find(ch => ch.name === '⛔│modlog');
+        const modLogChannel = await getModLogChannel(guild);
         if (modLogChannel) {
             const logEmbed = new EmbedBuilder()
                 .setColor(isBanned ? CONFIG.THEME.COLOR_CRITICAL : 0xFFAA00)
