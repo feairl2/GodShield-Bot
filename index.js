@@ -90,7 +90,7 @@ async function deleteOldMessagesIndividually(channel, messages) {
 
 async function getModLogChannel(guild) {
 
-    const keywords = ["modlog", "mod-log", "mod_log", "mod", "log"];
+    const keywords = ["modlog", "mod-log", "mod_log", "log"];
 
     let channel = guild.channels.cache.find(c => {
         if (!c.isTextBased()) return false;
