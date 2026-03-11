@@ -53,6 +53,7 @@ const SYSTEM_STATE = {
     punishedCache: new Set(),
     purgingChannels: new Set(),
     webhookOwners: new Collection(),
+    activePurgeTargets: new Set(),
     stats: {
         punishedCount: 0,
         cleanedCount: 0,
@@ -88,139 +89,119 @@ async function deleteOldMessagesIndividually(channel, messages) {
 }
 
 async function massPurge(channel, userId) {
-    if (!channel) return 0;
+
     if (!channel || !channel.isTextBased()) return 0;
-    if (!channel.messages || typeof channel.messages.fetch !== 'function') return 0;
 
     if (SYSTEM_STATE.purgingChannels.has(channel.id)) {
-        console.log(`[GodShield] 頻道 ${channel.name} 已在清理中，跳過`);
+        console.log(`[GodShield] ${channel.name} 已在清理中`);
         return 0;
     }
 
     SYSTEM_STATE.purgingChannels.add(channel.id);
 
+    console.log(`[GodShield] 啟動持續清理 | 目標: ${userId}`);
+
     let totalDeleted = 0;
-    let lastMessageId = null;
-    let page = 0;
+    let idleRounds = 0;
 
     const BULK_DELETE_LIMIT_MS = 14 * 24 * 60 * 60 * 1000;
-    const SAFE_BULK_DELETE_MS = BULK_DELETE_LIMIT_MS - 60 * 1000;
 
-    console.log(`[GodShield] 開始清理頻道: ${channel.name} | 目標: ${userId}`);
+    while (true) {
 
-    for (let round = 0; round < 80; round++) {
-
-console.log(`[GodShield] 清理輪次 ${round + 1}/10`);
-
-    lastMessageId = null;
-    page = 0;
-        
         try {
-            const fetchOptions = { limit: 100 };
-            if (lastMessageId) fetchOptions.before = lastMessageId;
 
-            const fetched = await channel.messages.fetch(fetchOptions).catch(() => null);
+            const fetched = await channel.messages.fetch({ limit: 100 }).catch(()=>null);
 
             if (!fetched || fetched.size === 0) {
-                console.log(`[GodShield] 頻道 ${channel.name} 已無更多訊息可掃描`);
-                break;
+                idleRounds++;
             }
-
-            page++;
-            lastMessageId = fetched.last().id;
 
             const now = Date.now();
 
-            const targetMessages = fetched.filter(msg => {
-    return (
-        msg.author?.id === userId ||
-        msg.webhookId ||
-        msg.author?.bot
-    );
-});
+            const targets = fetched.filter(msg => {
 
-            if (targetMessages.size === 0) {
-                const allTooOld = fetched.every(msg => (now - msg.createdTimestamp) >= SAFE_BULK_DELETE_MS);
+                return (
+                    msg.author?.id === userId ||
+                    msg.webhookId ||
+                    msg.author?.bot
+                );
 
-                console.log(`[GodShield] ${channel.name} 第 ${page} 頁 | 抓到 ${fetched.size} 則 | 目標 0 則`);
+            });
 
-                if (allTooOld) {
-                    console.log(`[GodShield] ${channel.name} 已進入過舊訊息區域，停止掃描`);
-                    break;
+            if (targets.size === 0) {
+
+                idleRounds++;
+
+                console.log(`[GodShield] 本輪沒有目標訊息 (${idleRounds}/3)`);
+
+            } else {
+
+                idleRounds = 0;
+
+                const recentTargets = targets.filter(msg => 
+                    (now - msg.createdTimestamp) < BULK_DELETE_LIMIT_MS
+                );
+
+                const oldTargets = targets.filter(msg => 
+                    (now - msg.createdTimestamp) >= BULK_DELETE_LIMIT_MS
+                );
+
+                if (recentTargets.size > 0) {
+
+                    try {
+
+                        const deleted = await channel.bulkDelete(recentTargets, true).catch(()=>null);
+
+                        if (deleted) {
+                            totalDeleted += deleted.size;
+                            SYSTEM_STATE.stats.cleanedCount += deleted.size;
+
+                            console.log(`[GodShield] bulkDelete ${deleted.size} 則`);
+                        }
+
+                    } catch {}
                 }
 
-                await new Promise(res => setTimeout(res, 100));
-                continue;
-            }
+                if (oldTargets.size > 0) {
 
-            const recentTargets = targetMessages.filter(msg => {
-                return (now - msg.createdTimestamp) < SAFE_BULK_DELETE_MS;
-            });
+                    for (const msg of oldTargets.values()) {
 
-            const oldTargets = targetMessages.filter(msg => {
-                return (now - msg.createdTimestamp) >= SAFE_BULK_DELETE_MS;
-            });
+                        try {
+                            await msg.delete().catch(()=>null);
+                            totalDeleted++;
+                            SYSTEM_STATE.stats.cleanedCount++;
+                        } catch {}
 
-            console.log(
-                `[GodShield] ${channel.name} 第 ${page} 頁 | 抓到 ${fetched.size} 則 | 目標 ${targetMessages.size} 則 | 可批刪 ${recentTargets.size} 則 | 舊訊息 ${oldTargets.size} 則`
-            );
-
-            if (recentTargets.size > 0) {
-                try {
-                    const deleted = await channel.bulkDelete(recentTargets, true).catch(() => null);
-
-                    if (deleted) {
-                        totalDeleted += deleted.size;
-                        SYSTEM_STATE.stats.cleanedCount += deleted.size;
-                        console.log(`[GodShield] ${channel.name} bulkDelete 成功 ${deleted.size} 則`);
-                    } else {
-                        console.log(`[GodShield] ${channel.name} bulkDelete 失敗，改單刪近期訊息`);
-                        const singleDeleted = await deleteOldMessagesIndividually(channel, recentTargets);
-                        totalDeleted += singleDeleted;
-                        SYSTEM_STATE.stats.cleanedCount += singleDeleted;
+                        await new Promise(r=>setTimeout(r,80));
                     }
-                } catch (err) {
-                    console.log(`[GodShield] ${channel.name} bulkDelete 發生錯誤: ${err.message}`);
-                    const singleDeleted = await deleteOldMessagesIndividually(channel, recentTargets);
-                    totalDeleted += singleDeleted;
-                    SYSTEM_STATE.stats.cleanedCount += singleDeleted;
+
+                    console.log(`[GodShield] 單刪舊訊息 ${oldTargets.size} 則`);
                 }
             }
 
-            if (oldTargets.size > 0) {
-                const singleDeleted = await deleteOldMessagesIndividually(channel, oldTargets);
-                totalDeleted += singleDeleted;
-                SYSTEM_STATE.stats.cleanedCount += singleDeleted;
-                console.log(`[GodShield] ${channel.name} 單刪舊訊息 ${singleDeleted} 則`);
-            }
+            // 如果連續3輪沒有訊息 → 停止
+            if (idleRounds >= 3) {
 
-            const reachedVeryOldArea = fetched.every(msg => (now - msg.createdTimestamp) >= SAFE_BULK_DELETE_MS);
-            if (reachedVeryOldArea) {
-                console.log(`[GodShield] ${channel.name} 本頁皆為舊訊息區，停止掃描`);
+                console.log(`[GodShield] 目標 ${userId} 已停止發訊息，結束清理`);
+
                 break;
             }
 
-            await new Promise(res => setTimeout(res, 100));
+            await new Promise(r => setTimeout(r,1500));
+
         } catch (err) {
-            if (err.status === 429) {
-                const retryAfter = err.rawError?.retry_after
-                    ? err.rawError.retry_after * 1000
-                    : 5000;
 
-                console.log(`[GodShield] ${channel.name} 遇到 429，等待 ${retryAfter}ms`);
-                await new Promise(res => setTimeout(res, retryAfter));
-                continue;
-            }
+            console.log(`[GodShield] 清理錯誤: ${err.message}`);
 
-            console.log(`[GodShield] ${channel.name} 清理失敗: ${err.message}`);
             break;
         }
-        await new Promise(res => setTimeout(res, 500));
+
     }
 
     SYSTEM_STATE.purgingChannels.delete(channel.id);
 
-    console.log(`[GodShield] 頻道 ${channel.name} 清理完成，共刪除 ${totalDeleted} 則`);
+    console.log(`[GodShield] 清理完成，共刪除 ${totalDeleted} 則`);
+
     return totalDeleted;
 }
 
