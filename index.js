@@ -600,10 +600,6 @@ client.on(Events.MessageCreate, async (message) => {
         return executeJustice(message, "偵測到外部機器人散佈可疑連結", 'BAN');
     }
 
-    if (message.mentions.everyone && author.id !== message.guild.ownerId) {
-        return executeJustice(message, "偵測到試圖違規提及 (@everyone)", 'BAN');
-    }
-
     if (!SYSTEM_STATE.contentFingerprints.has(author.id)) {
         SYSTEM_STATE.contentFingerprints.set(author.id, { lastContent: '', count: 0 });
     }
